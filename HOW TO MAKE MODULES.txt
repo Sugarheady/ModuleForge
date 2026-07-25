@@ -1,0 +1,171 @@
+================================================================
+ MODULE FORGE - HOW TO MAKE CUSTOM MODULES WITH JSON
+================================================================
+
+Module Forge is a SEPARATE mod from Weapon Forge. It lets you create
+custom MODULES - the small grid upgrades you attach to your ship or
+weapons (like Health Up, or +Firerate, or Extra Projectile). Custom
+modules can drop from crates/bosses and/or be bought in the shop.
+
+No programming needed: the DLL does the work; the JSON files are the
+modules. Every *.json in the "modules" folder (next to ModuleForge.dll
+in BepInEx\plugins) becomes a module.
+
+----------------------------------------------------------------
+ 1. HOW IT WORKS
+----------------------------------------------------------------
+
+At game startup, Module Forge reads each modules/*.json, clones a
+stock module of the right kind as a shell, swaps in your effects, and
+registers it so it works with save/continue. It then makes the module
+available in loot and/or the shop per your settings.
+
+Edits are read at STARTUP - restart the game to see changes.
+
+A module attaches to ONE of two places, chosen by "target":
+  ship    -> the ship-body grid (stat ups, regen, shields, drains)
+  weapon  -> a weapon/gadget grid (fire rate, projectiles, explosions)
+The game routes it automatically based on this choice.
+
+----------------------------------------------------------------
+ 2. QUICK START
+----------------------------------------------------------------
+
+  1. Install ModuleForge.dll in BepInEx\plugins (its own folder).
+  2. Run the game once - a "modules" folder appears next to the DLL
+     with example files + a README.
+  3. Easiest: open "Module Builder.html", design a module, click
+     SAVE .JSON FILE, and drop it in the modules folder.
+  4. Restart the game. The module now drops / is in the shop.
+
+Errors are logged to <game>\BepInEx\LogOutput.log (search
+"ModuleForge") - a bad file is skipped, never crashes the game.
+
+----------------------------------------------------------------
+ 3. FILE STRUCTURE
+----------------------------------------------------------------
+
+{
+  "name": "GlassCannon",        <- REQUIRED, unique id, no spaces
+  "displayName": "GLASS CANNON",
+  "description": "...",
+  "target": "weapon",           <- "ship" or "weapon" (default ship)
+  "icon": "HUD_GridTiles_10",   <- module icon sprite (section 6)
+  "color": "#ff5555",           <- icon tint: game color or #hex
+  "source": "both",             <- "loot" / "shop" / "both"
+  "shopPrice": 150,             <- shop cost in money
+  "shopUnlockLevel": 2,         <- stations to unlock first (0 = first)
+  "lootWeight": 10,             <- drop chance vs other modules
+  "effects": [ ...one or more effect objects... ]   <- REQUIRED
+}
+
+A module can carry SEVERAL effects, and you can MIX buffs and debuffs
+(e.g. +1 projectile AND -20% fire rate). Just list them all in
+"effects".
+
+----------------------------------------------------------------
+ 4. VALUES
+----------------------------------------------------------------
+
+Any magnitude can be a plain number (flat, e.g. "value": 1) or a
+scaling object that grows with module level:
+    { "baseValue": 2, "increaseMethod": "Add", "change": 1 }
+Flat numbers are simplest and level-independent. NEGATIVE numbers are
+allowed and do the opposite (e.g. -0.2 fire rate = -20%).
+
+----------------------------------------------------------------
+ 5. EFFECTS
+----------------------------------------------------------------
+
+SHIP effects (use with "target": "ship"):
+  ModifyResourceCapacity  { resource, amount }        +/- a tank's max
+  ResourceAutoChargeEffect{ resource, amount }        regen per second
+  DrainResourceEffect     { resource, amount }        drain/sec (neg=gain)
+  AddShieldEffect         { resource, amount }        shield; 0.5 = 50%
+
+WEAPON effects (use with "target": "weapon"):
+  ModifyWeaponProperty { targetProperty, deltaCalculationMode, value }
+     targetProperty: FireRate, BurstSize, BurstDelay, ProjectileCount,
+       Spread, AngleVariance, AngleOffset, KnockbackForce, Cost, Range,
+       Speed  (Damage is intentionally unavailable - a game bug)
+     deltaCalculationMode:
+       "Constant"     flat +value  (e.g. +1 projectile)
+       "FromOriginal" +value * base stat  (0.25 = +25%)
+       "FromCurrent"  +value * current stat
+  IncreaseExplosionRadiusEffect { increaseAmount }
+  AddImpactExplosionEffect      { }        projectiles explode on hit
+  AddBurnEffect        { amount, costPerProjectile, costResource }
+  AddExplosionEffect   { damageType, damageAmount, costPerProjectile,
+     costResource, addImpactExplosion, addTimeoutExplosion,
+     explosionRadiusIncrement, burn }
+  AddDischargeEffect   { chainLengthIncrement, damageIncrement, impact,
+     timeout, costPerProjectile, costResource }     the "spark" arc
+
+The burn/explosion/discharge effects only fire on PROJECTILE weapons.
+Keep weapon stats sane: ProjectileCount/BurstSize should end >=1,
+FireRate stays >0, Spread >=0 (it clamps).
+
+Resource names: Health, Stamina, Caps, Electron, Fuel, Gel, Tech.
+(Money is currency - not usable as a module resource.)
+
+----------------------------------------------------------------
+ 6. ICONS & COLOR
+----------------------------------------------------------------
+
+Icons are module sprites named "HUD_GridTiles_NN". Handy ones:
+  Stat Up 12  Regen 17  Shield 34  Extra Projectile 10  Fire Rate 4
+  Spread 5  Projectile Speed 15  Range 11  Burn 40  Explosion 39
+  Spark 41  Power Core 18   Burst = "HUD_Modules_17"
+The Module Builder page has a dropdown for these.
+
+color: a game ColorAsset name (ColorWhite / ColorOrange / ColorPurple
+/ ColorBlue / ColorRed / ColorYellow / Color Tech / ColorPower) OR a
+hex value like "#ff5555" (a new color is made on the fly).
+
+----------------------------------------------------------------
+ 7. AVAILABILITY
+----------------------------------------------------------------
+
+source:
+  "loot"  only from crates/bosses (default)
+  "shop"  only in the shop
+  "both"  both
+shopPrice        cost in money (default 100)
+shopUnlockLevel  how many STATIONS you must unlock before it can appear
+                 in the shop (default 1; 0 = the very first shop).
+                 PUNK gates the shop by station count.
+lootWeight       drop chance vs other modules in the same crate pool
+                 (default 10; stock modules sit around 10).
+
+Custom modules are registered at startup, so save/continue works.
+Note: each shop tier rolls once as you pass it - to see a new shop
+module, start a fresh run.
+
+----------------------------------------------------------------
+ 8. EXAMPLES
+----------------------------------------------------------------
+
+Weapon module - glass cannon (more shots, slower fire):
+  {
+    "name": "GlassCannon", "displayName": "GLASS CANNON",
+    "target": "weapon", "source": "both",
+    "shopPrice": 150, "shopUnlockLevel": 2,
+    "effects": [
+      { "type": "ModifyWeaponProperty", "targetProperty": "ProjectileCount",
+        "deltaCalculationMode": "Constant", "value": 1 },
+      { "type": "ModifyWeaponProperty", "targetProperty": "FireRate",
+        "deltaCalculationMode": "FromOriginal", "value": -0.2 }
+    ]
+  }
+
+Ship module - tanky but leaky:
+  {
+    "name": "TankPlating", "displayName": "TANK PLATING",
+    "target": "ship", "source": "loot",
+    "effects": [
+      { "type": "ModifyResourceCapacity", "resource": "Health", "amount": 6 },
+      { "type": "DrainResourceEffect", "resource": "Fuel", "amount": 0.5 }
+    ]
+  }
+
+================================================================

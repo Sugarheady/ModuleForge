@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PUNK Module Forge Builder</title>
+<style>
+  :root{--bg:#0d0d11;--panel:#16161d;--panel2:#1d1d27;--line:#2c2c3a;
+    --text:#e8e8f0;--dim:#9a9ab0;--accent:#a78bfa;--accent2:#ffd27f;--bad:#ff7f7f;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.5 "Segoe UI",system-ui,sans-serif;}
+  header{padding:18px 24px;border-bottom:1px solid var(--line);background:var(--panel);}
+  header h1{margin:0;font-size:20px;letter-spacing:3px;color:var(--accent);}
+  header p{margin:4px 0 0;color:var(--dim);}
+  .layout{display:flex;height:calc(100vh - 78px);}
+  #form{flex:1.3;overflow-y:auto;padding:18px 24px 60px;}
+  #output-pane{flex:1;display:flex;flex-direction:column;border-left:1px solid var(--line);
+    background:var(--panel);min-width:320px;}
+  #output-pane .bar{display:flex;gap:8px;padding:12px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  #warnings{padding:0 12px;color:var(--bad);}
+  #warnings div{padding:6px 0;}
+  pre#output{flex:1;margin:0;padding:14px;overflow:auto;
+    font:13px/1.5 Consolas,monospace;color:var(--accent2);white-space:pre-wrap;word-break:break-word;}
+  button{background:var(--accent);color:#140c20;border:0;padding:9px 16px;font-weight:700;
+    cursor:pointer;border-radius:4px;font-size:13px;letter-spacing:1px;}
+  button:hover{filter:brightness(1.15);}
+  button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--line);}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+    margin:0 0 14px;padding:14px 16px;}
+  section>h2{margin:0 0 10px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px 14px;}
+  .field{display:flex;flex-direction:column;gap:3px;}
+  .field>span{font-size:12px;font-weight:600;}
+  .field>em{font-style:normal;font-size:11px;color:var(--dim);}
+  input,select,textarea{background:var(--panel2);color:var(--text);border:1px solid var(--line);
+    border-radius:4px;padding:7px 8px;font:inherit;width:100%;}
+  input:focus,select:focus,textarea:focus{outline:1px solid var(--accent);}
+  textarea{resize:vertical;min-height:48px;}
+  .hidden{display:none !important;}
+  .req{color:var(--bad);}
+  .effect-row{border:1px solid var(--line);border-radius:6px;background:var(--panel2);
+    padding:10px 12px;margin:0 0 10px;}
+  .effect-row .head{display:flex;gap:10px;align-items:center;}
+  .effect-row .head select{flex:1;}
+  .effect-row .eff-remove{background:var(--bad);color:#200;padding:6px 11px;letter-spacing:0;}
+  .eff-params{margin-top:10px;}
+  .eff-params .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));}
+  footer.pad{height:60px;}
+  .addbtn{margin-top:4px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>MODULE FORGE &mdash; MODULE BUILDER</h1>
+  <p>Build custom upgrade modules. Add one or more effects (mix buffs and debuffs freely).
+     Copy the JSON or save it into your <b>modules</b> folder, then restart the game.</p>
+</header>
+
+<div class="layout">
+<div id="form">
+
+  <section>
+    <h2>Basics</h2>
+    <div class="grid">
+      <label class="field"><span>name <b class="req">*</b></span>
+        <input type="text" id="f-name" placeholder="MyModule">
+        <em>unique id, letters/numbers</em></label>
+      <label class="field"><span>displayName</span>
+        <input type="text" data-path="displayName" placeholder="MY MODULE"></label>
+      <label class="field"><span>target</span>
+        <select id="f-target" data-path="target">
+          <option value="ship">ship body (stat / regen / shield)</option>
+          <option value="weapon">weapon (fire rate, projectiles...)</option>
+        </select>
+        <em>where the module attaches</em></label>
+      <label class="field"><span>icon (pick a module icon)</span>
+        <select id="f-icon-preset">
+          <option value="">-- keep default --</option>
+          <option value="HUD_GridTiles_12">Stat Up</option>
+          <option value="HUD_GridTiles_17">Regen</option>
+          <option value="HUD_GridTiles_34">Shield</option>
+          <option value="HUD_GridTiles_10">Extra Projectile</option>
+          <option value="HUD_GridTiles_4">Fire Rate</option>
+          <option value="HUD_GridTiles_5">Spread</option>
+          <option value="HUD_GridTiles_15">Projectile Speed</option>
+          <option value="HUD_GridTiles_11">Range</option>
+          <option value="HUD_GridTiles_40">Burn</option>
+          <option value="HUD_GridTiles_39">Explosion</option>
+          <option value="HUD_GridTiles_41">Spark</option>
+          <option value="HUD_GridTiles_18">Power Core</option>
+          <option value="HUD_Modules_17">Burst</option>
+        </select>
+        <em>fills the icon field below</em></label>
+      <label class="field"><span>icon (sprite name)</span>
+        <input type="text" id="f-icon-custom" data-path="icon"
+               placeholder="e.g. HUD_GridTiles_12"></label>
+      <label class="field"><span>icon color (game presets)</span>
+        <select id="f-color-preset">
+          <option value="">-- pick a color --</option>
+          <option value="ColorWhite">White</option>
+          <option value="ColorOrange">Orange</option>
+          <option value="ColorPurple">Purple</option>
+          <option value="ColorBlue">Blue</option>
+          <option value="ColorRed">Red</option>
+          <option value="ColorYellow">Yellow</option>
+          <option value="Color Tech">Tech</option>
+          <option value="ColorPower">Power</option>
+        </select>
+        <em>fills the color field below</em></label>
+      <label class="field"><span>color (name or #hex)</span>
+        <input type="text" id="f-color-custom" data-path="color"
+               placeholder="ColorRed or #ff5555"></label>
+    </div>
+    <label class="field" style="margin-top:10px"><span>description</span>
+      <textarea data-path="description" placeholder="Card description..."></textarea></label>
+  </section>
+
+  <section>
+    <h2>Availability</h2>
+    <div class="grid">
+      <label class="field"><span>source</span>
+        <select id="f-source" data-path="source">
+          <option value="loot">loot (crates / bosses)</option>
+          <option value="shop">shop only</option>
+          <option value="both">loot + shop</option>
+        </select></label>
+      <label class="field" id="f-lootweight-field"><span>loot weight</span>
+        <input type="number" step="any" data-path="lootWeight" placeholder="10">
+        <em>drop chance vs other modules</em></label>
+      <label class="field" id="f-shopprice-field"><span>shop price</span>
+        <input type="number" step="1" data-path="shopPrice" placeholder="100">
+        <em>cost in money</em></label>
+      <label class="field" id="f-shopunlock-field"><span>shop unlock level</span>
+        <input type="number" step="1" data-path="shopUnlockLevel" placeholder="1">
+        <em>stations to unlock first (0 = first shop)</em></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Effects</h2>
+    <p class="field"><em id="eff-hint">Effects for the selected target. Mix positive and
+      negative freely (e.g. +1 projectile and -20% fire rate).</em></p>
+    <div id="effects-list"></div>
+    <button type="button" class="secondary addbtn" id="add-effect">+ ADD EFFECT</button>
+  </section>
+
+  <footer class="pad"></footer>
+</div>
+
+<div id="output-pane">
+  <div class="bar">
+    <button id="btn-copy">COPY JSON</button>
+    <button id="btn-save">SAVE .JSON FILE</button>
+    <button id="btn-reset" class="secondary">RESET</button>
+  </div>
+  <div id="warnings"></div>
+  <pre id="output"></pre>
+</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var RESOURCES = ["Health","Stamina","Caps","Electron","Fuel","Gel","Tech"];
+
+  // Effect catalog: key -> { group, label, params:[{k,t,ph,opts,def}] }
+  // t: number | int | resource | bool | select
+  var EFFECTS = {
+    "ModifyResourceCapacity": { group:"ship", label:"Resource capacity (+/- max)",
+      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"6"} ] },
+    "ResourceAutoChargeEffect": { group:"ship", label:"Regen (per second)",
+      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.2"} ] },
+    "DrainResourceEffect": { group:"ship", label:"Drain (per second; negative = gain)",
+      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.5"} ] },
+    "AddShieldEffect": { group:"ship", label:"Shield (fraction, 0.5 = 50%)",
+      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.5"} ] },
+    "ModifyWeaponProperty": { group:"weapon", label:"Weapon stat",
+      params:[
+        {k:"targetProperty",t:"select",opts:["FireRate","BurstSize","BurstDelay",
+          "ProjectileCount","Spread","AngleVariance","AngleOffset","KnockbackForce",
+          "Cost","Range","Speed"]},
+        {k:"deltaCalculationMode",t:"select",opts:["Constant","FromOriginal","FromCurrent"]},
+        {k:"value",t:"number",ph:"1"} ] },
+    "IncreaseExplosionRadiusEffect": { group:"weapon", label:"Explosion radius +",
+      params:[ {k:"increaseAmount",t:"number",ph:"1"} ] },
+    "AddImpactExplosionEffect": { group:"weapon", label:"Explode on impact (no params)",
+      params:[] },
+    "AddBurnEffect": { group:"weapon", label:"Burn (per projectile)",
+      params:[ {k:"amount",t:"number",ph:"5"}, {k:"costPerProjectile",t:"number",ph:"0.25"},
+        {k:"costResource",t:"resource"} ] },
+    "AddExplosionEffect": { group:"weapon", label:"Explosion (per projectile)",
+      params:[ {k:"damageType",t:"resource"}, {k:"damageAmount",t:"number",ph:"2"},
+        {k:"costPerProjectile",t:"number",ph:"1"}, {k:"costResource",t:"resource"},
+        {k:"addImpactExplosion",t:"bool"}, {k:"addTimeoutExplosion",t:"bool"},
+        {k:"explosionRadiusIncrement",t:"number",ph:"0"}, {k:"burn",t:"number",ph:"0"} ] },
+    "AddDischargeEffect": { group:"weapon", label:"Discharge / spark (chain)",
+      params:[ {k:"chainLengthIncrement",t:"int",ph:"1"}, {k:"damageIncrement",t:"number",ph:"3"},
+        {k:"impact",t:"bool"}, {k:"timeout",t:"bool"},
+        {k:"costPerProjectile",t:"int",ph:"1"}, {k:"costResource",t:"resource"} ] },
+  };
+
+  var output=document.getElementById("output");
+  var warnings=document.getElementById("warnings");
+  var nameInput=document.getElementById("f-name");
+  var targetSel=document.getElementById("f-target");
+  var effectsList=document.getElementById("effects-list");
+
+  function currentTarget(){ return targetSel.value; }
+
+  function resourceOptionsHtml(){
+    var h='';
+    for(var i=0;i<RESOURCES.length;i++) h+='<option>'+RESOURCES[i]+'</option>';
+    return h;
+  }
+
+  function typeOptionsHtml(target){
+    var h='';
+    for(var key in EFFECTS){
+      if(EFFECTS[key].group===target)
+        h+='<option value="'+key+'">'+EFFECTS[key].label+'</option>';
+    }
+    return h;
+  }
+
+  function renderParams(paramsEl, type){
+    var spec=EFFECTS[type];
+    if(!spec){ paramsEl.innerHTML=''; return; }
+    if(spec.params.length===0){ paramsEl.innerHTML=
+      '<em style="color:var(--dim);font-size:12px">No parameters.</em>'; return; }
+    var h='<div class="grid">';
+    for(var i=0;i<spec.params.length;i++){
+      var p=spec.params[i];
+      h+='<label class="field"><span>'+p.k+'</span>';
+      if(p.t==='resource'){
+        h+='<select data-key="'+p.k+'" data-t="resource">'+resourceOptionsHtml()+'</select>';
+      } else if(p.t==='bool'){
+        h+='<select data-key="'+p.k+'" data-t="bool"><option value="">default</option>'+
+           '<option value="true">true</option><option value="false">false</option></select>';
+      } else if(p.t==='select'){
+        var o='';
+        for(var j=0;j<p.opts.length;j++) o+='<option>'+p.opts[j]+'</option>';
+        h+='<select data-key="'+p.k+'" data-t="select">'+o+'</select>';
+      } else {
+        h+='<input type="number" step="any" data-key="'+p.k+'" data-t="'+p.t+'" placeholder="'+
+           (p.ph||'')+'">';
+      }
+      h+='</label>';
+    }
+    h+='</div>';
+    paramsEl.innerHTML=h;
+  }
+
+  function addEffectRow(){
+    var target=currentTarget();
+    var row=document.createElement("div");
+    row.className="effect-row";
+    row.innerHTML=
+      '<div class="head"><select class="eff-type">'+typeOptionsHtml(target)+'</select>'+
+      '<button type="button" class="eff-remove">REMOVE</button></div>'+
+      '<div class="eff-params"></div>';
+    effectsList.appendChild(row);
+    var typeSel=row.querySelector(".eff-type");
+    var paramsEl=row.querySelector(".eff-params");
+    renderParams(paramsEl, typeSel.value);
+    typeSel.addEventListener("change", function(){
+      renderParams(paramsEl, typeSel.value); refresh();
+    });
+    row.querySelector(".eff-remove").addEventListener("click", function(){
+      row.remove(); refresh();
+    });
+    refresh();
+  }
+
+  // When target changes, rebuild each row's type options for the new
+  // group (reset selection if the old type no longer belongs).
+  function retargetRows(){
+    var target=currentTarget();
+    var rows=effectsList.querySelectorAll(".effect-row");
+    for(var i=0;i<rows.length;i++){
+      var typeSel=rows[i].querySelector(".eff-type");
+      var prev=typeSel.value;
+      typeSel.innerHTML=typeOptionsHtml(target);
+      var stillValid=EFFECTS[prev] && EFFECTS[prev].group===target;
+      typeSel.value=stillValid?prev:typeSel.options[0].value;
+      renderParams(rows[i].querySelector(".eff-params"), typeSel.value);
+    }
+  }
+
+  function collectEffects(){
+    var out=[];
+    var rows=effectsList.querySelectorAll(".effect-row");
+    for(var i=0;i<rows.length;i++){
+      var type=rows[i].querySelector(".eff-type").value;
+      var obj={type:type};
+      var inputs=rows[i].querySelectorAll("[data-key]");
+      for(var j=0;j<inputs.length;j++){
+        var el=inputs[j], key=el.getAttribute("data-key"), t=el.getAttribute("data-t");
+        var raw=el.value;
+        if(raw===null||String(raw).trim()==="") continue;
+        raw=String(raw).trim();
+        if(t==="bool") obj[key]=(raw==="true");
+        else if(t==="int") obj[key]=parseInt(raw,10);
+        else if(t==="number"){ var n=parseFloat(raw); if(!isNaN(n)) obj[key]=n; }
+        else obj[key]=raw; // resource / select
+      }
+      out.push(obj);
+    }
+    return out;
+  }
+
+  function build(){
+    var out={};
+    var warn=[];
+    var name=nameInput.value.trim();
+    if(!name) warn.push("⚠ \"name\" is required.");
+    if(/\s/.test(name)) warn.push("⚠ \"name\" should not contain spaces.");
+    out.name=name||"MyModule";
+
+    var fields=document.querySelectorAll("#form [data-path]");
+    for(var i=0;i<fields.length;i++){
+      var el=fields[i];
+      var raw=el.value;
+      if(raw===null||String(raw).trim()==="") continue;
+      raw=String(raw).trim();
+      var path=el.getAttribute("data-path");
+      if(el.type==="number"){ var v=parseFloat(raw); if(isNaN(v)) continue; out[path]=v; }
+      else out[path]=raw;
+    }
+
+    var effects=collectEffects();
+    if(effects.length===0) warn.push("⚠ Add at least one effect.");
+    out.effects=effects;
+
+    // Ordered output
+    var keys=["name","displayName","description","target","icon","color",
+              "source","lootWeight","shopPrice","shopUnlockLevel",
+              "repeatInShop","canBeBoosted","effects"];
+    var ordered={};
+    for(var k=0;k<keys.length;k++) if(keys[k] in out) ordered[keys[k]]=out[keys[k]];
+    for(var key in out) if(!(key in ordered)) ordered[key]=out[key];
+
+    warnings.innerHTML="";
+    for(var w=0;w<warn.length;w++){
+      var d=document.createElement("div"); d.textContent=warn[w]; warnings.appendChild(d);
+    }
+    return ordered;
+  }
+
+  function refresh(){
+    // availability field visibility
+    var src=document.getElementById("f-source").value;
+    document.getElementById("f-lootweight-field").classList.toggle("hidden", src==="shop");
+    document.getElementById("f-shopprice-field").classList.toggle("hidden", src==="loot");
+    document.getElementById("f-shopunlock-field").classList.toggle("hidden", src==="loot");
+    output.textContent=JSON.stringify(build(),null,2);
+  }
+
+  document.addEventListener("input", refresh);
+  document.addEventListener("change", refresh);
+
+  targetSel.addEventListener("change", function(){ retargetRows(); refresh(); });
+
+  document.getElementById("f-color-preset").addEventListener("change", function(){
+    if(this.value) document.getElementById("f-color-custom").value=this.value; refresh();
+  });
+  document.getElementById("f-icon-preset").addEventListener("change", function(){
+    if(this.value) document.getElementById("f-icon-custom").value=this.value; refresh();
+  });
+
+  document.getElementById("add-effect").addEventListener("click", addEffectRow);
+
+  document.getElementById("btn-copy").addEventListener("click", function(){
+    var text=output.textContent;
+    function fb(){ var a=document.createElement("textarea"); a.value=text;
+      document.body.appendChild(a); a.select(); try{document.execCommand("copy");}catch(e){}
+      document.body.removeChild(a); }
+    if(navigator.clipboard&&navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).catch(fb); else fb();
+    var b=this; b.textContent="COPIED!"; setTimeout(function(){b.textContent="COPY JSON";},1200);
+  });
+
+  document.getElementById("btn-save").addEventListener("click", function(){
+    var name=nameInput.value.trim()||"MyModule";
+    var blob=new Blob([output.textContent],{type:"application/json"});
+    var link=document.createElement("a");
+    link.href=URL.createObjectURL(blob); link.download=name+".json";
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", function(){
+    if(!confirm("Clear the whole form?")) return;
+    var fields=document.querySelectorAll("#form [data-path], #f-name, #f-icon-preset, #f-color-preset");
+    for(var i=0;i<fields.length;i++){
+      var el=fields[i];
+      if(el.tagName==="SELECT") el.selectedIndex=0; else el.value="";
+    }
+    effectsList.innerHTML="";
+    refresh();
+  });
+
+  // Seed with one effect row to start.
+  addEffectRow();
+  refresh();
+})();
+</script>
+</body>
+</html>
