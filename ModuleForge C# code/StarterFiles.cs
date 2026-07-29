@@ -47,6 +47,86 @@ namespace ModuleForge
 ");
 
             File.WriteAllText(
+                Path.Combine(folder, "ExampleRapidBurn.json"),
+@"{
+  ""name"": ""RapidBurn"",
+  ""displayName"": ""RAPID BURN"",
+  ""description"": ""Adds burn, and makes burn tick faster on enemies."",
+  ""target"": ""weapon"",
+  ""icon"": ""HUD_GridTiles_40"",
+  ""color"": ""ColorOrange"",
+  ""source"": ""both"",
+  ""shopPrice"": 175,
+  ""shopUnlockLevel"": 2,
+  ""lootWeight"": 8,
+  ""effects"": [
+    { ""type"": ""AddBurnEffect"", ""amount"": 4,
+      ""costPerProjectile"": 0.2, ""costResource"": ""Caps"" },
+    { ""type"": ""BurnTickRateEffect"", ""ticksPerSecond"": 0.1 }
+  ]
+}
+");
+
+            File.WriteAllText(
+                Path.Combine(folder, "ExampleRainbowBurn.json"),
+@"{
+  ""name"": ""RainbowBurn"",
+  ""displayName"": ""RAINBOW BURN"",
+  ""description"": ""Adds burn, and sets enemy flames to cycle RGB."",
+  ""target"": ""weapon"",
+  ""icon"": ""HUD_GridTiles_40"",
+  ""color"": ""ColorPurple"",
+  ""source"": ""both"",
+  ""shopPrice"": 150,
+  ""shopUnlockLevel"": 1,
+  ""lootWeight"": 8,
+  ""effects"": [
+    { ""type"": ""AddBurnEffect"", ""amount"": 4,
+      ""costPerProjectile"": 0.2, ""costResource"": ""Caps"" },
+    { ""type"": ""BurnColorEffect"", ""rgb"": true, ""rgbSpeed"": 0.5 }
+  ]
+}
+");
+
+            File.WriteAllText(
+                Path.Combine(folder, "ExamplePhaseRounds.json"),
+@"{
+  ""name"": ""PhaseRounds"",
+  ""displayName"": ""PHASE ROUNDS"",
+  ""description"": ""Your shots pass through walls but still hit enemies."",
+  ""target"": ""weapon"",
+  ""icon"": ""HUD_GridTiles_15"",
+  ""color"": ""ColorBlue"",
+  ""source"": ""both"",
+  ""shopPrice"": 150,
+  ""shopUnlockLevel"": 2,
+  ""lootWeight"": 8,
+  ""effects"": [
+    { ""type"": ""Phasing"" }
+  ]
+}
+");
+
+            File.WriteAllText(
+                Path.Combine(folder, "ExamplePiercingRounds.json"),
+@"{
+  ""name"": ""PiercingRounds"",
+  ""displayName"": ""PIERCING ROUNDS"",
+  ""description"": ""Shots pierce through enemies (capped), weaker each hit."",
+  ""target"": ""weapon"",
+  ""icon"": ""HUD_GridTiles_10"",
+  ""color"": ""ColorRed"",
+  ""source"": ""both"",
+  ""shopPrice"": 150,
+  ""shopUnlockLevel"": 2,
+  ""lootWeight"": 8,
+  ""effects"": [
+    { ""type"": ""PierceCap"", ""pierceCap"": 3, ""falloff"": 0.15 }
+  ]
+}
+");
+
+            File.WriteAllText(
                 Path.Combine(folder, "README.txt"),
 @"MODULE FORGE - custom module definitions
 =========================================
@@ -124,6 +204,21 @@ EFFECTS - WEAPON (use with target ""weapon"")
     makes projectiles explode on impact (projectile weapons only)
 { ""type"": ""AddBurnEffect"", ""amount"": 5,
   ""costPerProjectile"": 0.25, ""costResource"": ""Caps"" }
+{ ""type"": ""BurnTickRateEffect"", ""ticksPerSecond"": 0.1 }
+    Speeds up how fast BURN ticks on ENEMIES while equipped: ticksPerSecond
+    is ADDED to the burn tick frequency and stacks additively across
+    equipped copies (e.g. burn ~1/sec + two +0.1 modules => ~1.2/sec). Burn
+    that enemies inflict on YOU is unaffected. It does NOT add burn itself -
+    pair with a burn source. Hard-capped (default 20/sec, see below).
+{ ""type"": ""BurnColorEffect"", ""color"": ""ColorBlue"" }
+{ ""type"": ""BurnColorEffect"", ""rgb"": true, ""rgbSpeed"": 0.5 }
+{ ""type"": ""BurnColorEffect"", ""rgb"": true, ""includeTerrain"": true }
+    Recolors the BURN FLAMES on ENEMIES while equipped. Give a ""color""
+    (game color name or #hex), OR set ""rgb"": true for a rainbow that
+    cycles (rgbSpeed = hue cycles/sec, default 0.5). Add
+    ""includeTerrain"": true to ALSO recolor burning terrain/world fire.
+    Your own on-fire flames are NEVER recolored. Does NOT add burn - pair
+    with a burn source. Most recently equipped color wins.
 { ""type"": ""AddExplosionEffect"", ""damageType"": ""Caps"", ""damageAmount"": 2,
   ""costPerProjectile"": 1, ""costResource"": ""Caps"",
   ""addImpactExplosion"": true, ""explosionRadiusIncrement"": 1, ""burn"": 0 }
@@ -131,6 +226,15 @@ EFFECTS - WEAPON (use with target ""weapon"")
   ""damageIncrement"": 3, ""impact"": true,
   ""costPerProjectile"": 1, ""costResource"": ""Electron"" }
     the ""spark""/chain-lightning arc
+{ ""type"": ""Phasing"" }
+    While equipped, your PROJECTILES pass through terrain (walls) but
+    still hit enemies. (Projectile weapons; for a phasing laser use
+    Weapon Forge's phasing flag.)
+{ ""type"": ""PierceCap"", ""pierceCap"": 3, ""falloff"": 0.15,
+  ""explodeOnLimit"": false }
+    Turns piercing ON and caps it: shots pierce THROUGH pierceCap enemies
+    then vanish on the next contact. falloff = damage lost per pierce.
+    Caps stack across equipped pierce modules. (Projectile weapons only.)
 (The burn/explosion/discharge effects only fire on PROJECTILE weapons.)
 
 ICONS
@@ -147,6 +251,10 @@ NOTES
   (Money exists but is currency - don't use it as a resource here).
 - Ship effects only work on ""ship"" modules; weapon effects only on
   ""weapon"" modules (they attach to different parts of the grid).
+- BurnTickRateEffect is capped: burn can never tick faster than
+  MaxTicksPerSecond (default 100) in BepInEx\config\com.andy.moduleforge.cfg.
+  (The game ticks burn at most once per frame, so a cap above your frame
+  rate just means 'every frame'.)
 - Errors are logged to BepInEx/LogOutput.log with the file name.
 ");
         }

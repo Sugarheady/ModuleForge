@@ -95,6 +95,44 @@ namespace ModuleForge
                                     (string)entry["costResource"])
                         };
 
+                    case "burntickrateeffect":
+                    case "burntickrate":
+                    case "burnrate":
+                    case "burnspeed":
+                    case "quickenburn":
+                        return new BurnRateModuleEffect
+                        {
+                            ticksPerSecond =
+                                Series(entry["ticksPerSecond"] ??
+                                       entry["amount"] ?? entry["value"])
+                        };
+
+                    case "burncoloreffect":
+                    case "burncolor":
+                    case "burntint":
+                        return BuildBurnColor(entry, fileName);
+
+                    case "phasing":
+                    case "phase":
+                    case "noclip":
+                        return new PhasingModuleEffect();
+
+                    case "piercecap":
+                    case "pierce":
+                    case "piercing":
+                        return new PierceModuleEffect
+                        {
+                            pierceCap =
+                                (int?)entry["pierceCap"] ??
+                                (int?)entry["cap"] ?? 2,
+                            falloff =
+                                (float?)entry["falloff"] ??
+                                (float?)entry["pierceDamageFalloff"] ?? 0f,
+                            explodeOnLimit =
+                                (bool?)entry["explodeOnLimit"] ??
+                                (bool?)entry["pierceExplodeOnLimit"] ?? false
+                        };
+
                     case "addexplosioneffect":
                     case "explosion":
                         return new AddExplosionEffect
@@ -160,6 +198,57 @@ namespace ModuleForge
                     "' has no valid \"resource\".");
 
             return r;
+        }
+
+        private static ModuleEffect BuildBurnColor(
+            JObject entry, string fileName)
+        {
+            bool rgb =
+                (bool?)entry["rgb"] ??
+                (bool?)entry["rainbow"] ?? false;
+
+            var effect = new BurnColorEffect
+            {
+                rgb = rgb,
+                rgbSpeed =
+                    (float?)entry["rgbSpeed"] ??
+                    (float?)entry["speed"] ?? 0.5f,
+                saturation = (float?)entry["saturation"] ?? 1f,
+                brightness = (float?)entry["brightness"] ?? 1f,
+                includeTerrain =
+                    (bool?)entry["includeTerrain"] ??
+                    (bool?)entry["terrain"] ?? false
+            };
+
+            if (rgb)
+            {
+                effect.colorLabel = "RGB";
+                return effect;
+            }
+
+            string colorText = (string)entry["color"];
+
+            if (string.IsNullOrEmpty(colorText))
+            {
+                Log.LogWarning(
+                    fileName + ": BurnColorEffect needs a \"color\" " +
+                    "(hex or game color) or \"rgb\": true - skipped.");
+                return null;
+            }
+
+            var colorAsset = ForgeAssets.ResolveColor(colorText);
+
+            if (colorAsset == null)
+            {
+                Log.LogWarning(
+                    fileName + ": BurnColorEffect color '" + colorText +
+                    "' not found - skipped.");
+                return null;
+            }
+
+            effect.color = colorAsset.color;
+            effect.colorLabel = colorText;
+            return effect;
         }
 
         private static ModuleEffect BuildWeaponProperty(

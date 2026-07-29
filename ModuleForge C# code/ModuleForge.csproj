@@ -104,6 +104,19 @@
     <Compile Include="ModuleStartupPatch.cs" />
     <Compile Include="ModuleLootPatch.cs" />
     <Compile Include="ModuleShopPatch.cs" />
+    <Compile Include="ModuleForgeBurn.cs" />
+    <Compile Include="BurnRateModuleEffect.cs" />
+    <Compile Include="BurnTickPatch.cs" />
+    <Compile Include="BurnResetPatch.cs" />
+    <Compile Include="WeaponStatsPatch.cs" />
+    <Compile Include="BurnColorEffect.cs" />
+    <Compile Include="BurnColorPatch.cs" />
+    <Compile Include="BurnColorTerrainPatch.cs" />
+    <Compile Include="ModuleForgeProjectile.cs" />
+    <Compile Include="ModuleForgePierceCap.cs" />
+    <Compile Include="ModuleForgeProjectilePatch.cs" />
+    <Compile Include="PhasingModuleEffect.cs" />
+    <Compile Include="PierceModuleEffect.cs" />
     <Compile Include="StarterFiles.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
