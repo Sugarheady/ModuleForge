@@ -190,6 +190,16 @@
     "AddBurnEffect": { group:"weapon", label:"Burn (per projectile)",
       params:[ {k:"amount",t:"number",ph:"5"}, {k:"costPerProjectile",t:"number",ph:"0.25"},
         {k:"costResource",t:"resource"} ] },
+    "BurnTickRateEffect": { group:"weapon", label:"Burn tick rate + (ticks/sec added; enemies only)",
+      params:[ {k:"ticksPerSecond",t:"number",ph:"0.1"} ] },
+    "BurnColorEffect": { group:"weapon", label:"Burn color / RGB (enemies; +terrain optional)",
+      params:[ {k:"color",t:"text",ph:"#00ff00 or ColorBlue"}, {k:"rgb",t:"bool"},
+        {k:"rgbSpeed",t:"number",ph:"0.5"}, {k:"includeTerrain",t:"bool"} ] },
+    "Phasing": { group:"weapon", label:"Phasing (shots pass through terrain, still hit enemies)",
+      params:[] },
+    "PierceCap": { group:"weapon", label:"Piercing + cap (pierce N enemies then vanish)",
+      params:[ {k:"pierceCap",t:"int",ph:"2"}, {k:"falloff",t:"number",ph:"0"},
+        {k:"explodeOnLimit",t:"bool"} ] },
     "AddExplosionEffect": { group:"weapon", label:"Explosion (per projectile)",
       params:[ {k:"damageType",t:"resource"}, {k:"damageAmount",t:"number",ph:"2"},
         {k:"costPerProjectile",t:"number",ph:"1"}, {k:"costResource",t:"resource"},
@@ -242,6 +252,9 @@
         var o='';
         for(var j=0;j<p.opts.length;j++) o+='<option>'+p.opts[j]+'</option>';
         h+='<select data-key="'+p.k+'" data-t="select">'+o+'</select>';
+      } else if(p.t==='text'){
+        h+='<input type="text" data-key="'+p.k+'" data-t="text" placeholder="'+
+           (p.ph||'')+'">';
       } else {
         h+='<input type="number" step="any" data-key="'+p.k+'" data-t="'+p.t+'" placeholder="'+
            (p.ph||'')+'">';

@@ -95,11 +95,45 @@ WEAPON effects (use with "target": "weapon"):
   IncreaseExplosionRadiusEffect { increaseAmount }
   AddImpactExplosionEffect      { }        projectiles explode on hit
   AddBurnEffect        { amount, costPerProjectile, costResource }
+  BurnTickRateEffect   { ticksPerSecond }
+     Speeds up how fast BURN ticks on enemies. ticksPerSecond is added to
+     the burn tick FREQUENCY while this module is equipped, and stacks
+     additively across equipped copies. e.g. burn normally ticks ~1/sec;
+     two +0.1 modules make it tick ~1.2/sec (so ~1.2x burn damage/sec).
+     - Affects ENEMIES only: burn that enemies put on YOU still ticks at
+       the normal rate.
+     - This effect does NOT add burn on its own - pair it with a burn
+       source (AddBurnEffect, or a burn weapon).
+     - Hard-capped so stacking can't run away - see the cap note below.
+  BurnColorEffect      { color } OR { rgb: true, rgbSpeed }
+     Recolors the BURN FLAMES on enemies while equipped.
+       color          a game color name (ColorBlue, ColorPurple...) or #hex.
+       rgb            true = ignore color and cycle a rainbow over time.
+       rgbSpeed       rainbow speed, hue cycles/sec (default 0.5). rgb only.
+       includeTerrain true = ALSO recolor burning terrain/world fire, not
+                      just enemies (default false).
+     - Your OWN on-fire flames are NEVER recolored (only enemies, plus
+       terrain if includeTerrain is on). Like the tick rate, it does NOT
+       add burn - pair with a burn source. If several are equipped, the
+       most recent one wins (its color AND its includeTerrain setting).
   AddExplosionEffect   { damageType, damageAmount, costPerProjectile,
      costResource, addImpactExplosion, addTimeoutExplosion,
      explosionRadiusIncrement, burn }
   AddDischargeEffect   { chainLengthIncrement, damageIncrement, impact,
      timeout, costPerProjectile, costResource }     the "spark" arc
+  Phasing              { }
+     While equipped, your PROJECTILES pass through terrain (walls) but
+     still hit enemies. No params. (Projectile weapons; for a phasing
+     laser use Weapon Forge's per-weapon phasing flag.)
+  PierceCap            { pierceCap, falloff, explodeOnLimit }
+     While equipped, turns PIERCING on for your projectiles and caps it:
+     they pierce THROUGH pierceCap enemies, then vanish on the next
+     contact (that enemy still takes the hit). Caps STACK if you equip
+     several. Options:
+       pierceCap       enemies pierced before it vanishes (default 2)
+       falloff         damage lost per enemy pierced (0.2 = -20% each)
+       explodeOnLimit  explode when it hits the cap
+     (Projectile weapons only.)
 
 The burn/explosion/discharge effects only fire on PROJECTILE weapons.
 Keep weapon stats sane: ProjectileCount/BurstSize should end >=1,
@@ -107,6 +141,16 @@ FireRate stays >0, Spread >=0 (it clamps).
 
 Resource names: Health, Stamina, Caps, Electron, Fuel, Gel, Tech.
 (Money is currency - not usable as a module resource.)
+
+BURN TICK-RATE CAP
+------------------
+Burn can never tick faster than a set number of times per second, no
+matter how many BurnTickRateEffect modules you stack. The cap defaults
+to 100 ticks/sec and lives in the BepInEx config file
+(BepInEx\config\com.andy.moduleforge.cfg) under [Burn] MaxTicksPerSecond -
+edit it there and restart to change the ceiling. (The game can only tick
+burn once per frame, so a cap above your frame rate just means "every
+frame".)
 
 ----------------------------------------------------------------
  6. ICONS & COLOR
