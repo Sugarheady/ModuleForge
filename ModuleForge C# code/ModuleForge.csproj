@@ -117,6 +117,7 @@
     <Compile Include="ModuleForgeProjectilePatch.cs" />
     <Compile Include="PhasingModuleEffect.cs" />
     <Compile Include="PierceModuleEffect.cs" />
+    <Compile Include="ForgeInterop.cs" />
     <Compile Include="StarterFiles.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

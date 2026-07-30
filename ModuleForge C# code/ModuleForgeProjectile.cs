@@ -102,6 +102,25 @@ namespace ModuleForge
             return false;
         }
 
+        // ---- Aggregates for the weapon stat card ----
+        // Only the player installs these modules, so a global view == the
+        // player's total (same assumption ModuleForgeBurn.Delta relies on).
+        public static bool AnyPhasing
+        {
+            get { return _phasing.Count > 0; }
+        }
+
+        public static int PierceCapTotal
+        {
+            get
+            {
+                int total = 0;
+                foreach (var kv in _pierce)
+                    total += kv.Value.cap;
+                return total;
+            }
+        }
+
         public static void Reset()
         {
             _phasing.Clear();

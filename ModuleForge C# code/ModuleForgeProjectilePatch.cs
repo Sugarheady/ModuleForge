@@ -22,7 +22,7 @@ namespace ModuleForge
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot
         {
-            private static AccessTools.FieldRef<Projectile, int> _maskRef;
+            private static AccessTools.FieldRef<Projectile, LayerMask> _maskRef;
             private static bool _ready;
             private static int _groundBit;
 
@@ -39,12 +39,31 @@ namespace ModuleForge
                     if (ModuleForgeProjectile.IsPhasing(data))
                         StripGround(__instance);
 
+                    // Pierce cap = module caps (owner) + the weapon's OWN
+                    // baked cap from WeaponForge, if any. The two ADD UP into
+                    // one counter here (ModuleForge owns counting; WeaponForge
+                    // stands down when we're installed).
                     int cap;
                     float falloff;
                     bool explode;
-                    if (ModuleForgeProjectile.TryGetPierce(
-                        data, out cap, out falloff, out explode))
+                    bool haveModule = ModuleForgeProjectile.TryGetPierce(
+                        data, out cap, out falloff, out explode);
+
+                    int wCap;
+                    float wFalloff;
+                    bool wExplode;
+                    bool haveWeapon = ForgeInterop.TryReadWeaponPierce(
+                        __instance, out wCap, out wFalloff, out wExplode);
+
+                    if (haveModule || haveWeapon)
                     {
+                        int totalCap =
+                            (haveModule ? cap : 0) + (haveWeapon ? wCap : 0);
+                        float totalFalloff = Mathf.Max(
+                            haveModule ? falloff : 0f, haveWeapon ? wFalloff : 0f);
+                        bool totalExplode =
+                            (haveModule && explode) || (haveWeapon && wExplode);
+
                         PiercingData pd = __instance.PiercingData;
                         if (!pd.enabled)
                         {
@@ -57,9 +76,9 @@ namespace ModuleForge
                         var pc = __instance.GetComponent<ModuleForgePierceCap>();
                         if (pc == null)
                             pc = __instance.gameObject.AddComponent<ModuleForgePierceCap>();
-                        pc.limit = Mathf.Max(0, cap);
-                        pc.falloff = falloff;
-                        pc.explodeOnLimit = explode;
+                        pc.limit = Mathf.Max(0, totalCap);
+                        pc.falloff = totalFalloff;
+                        pc.explodeOnLimit = totalExplode;
                     }
                 }
                 catch (Exception e)
@@ -72,7 +91,10 @@ namespace ModuleForge
             {
                 if (!_ready)
                 {
-                    _maskRef = AccessTools.FieldRefAccess<Projectile, int>(
+                    // NOTE: the field is a LayerMask struct, not an int -
+                    // FieldRefAccess<Projectile,int> throws for a value-type
+                    // mismatch, which is what silently broke phasing before.
+                    _maskRef = AccessTools.FieldRefAccess<Projectile, LayerMask>(
                         "collisionLayerMask");
                     int g = LayerMask.NameToLayer("Ground");
                     _groundBit = (g >= 0) ? (1 << g) : 0;
@@ -80,7 +102,11 @@ namespace ModuleForge
                 }
 
                 if (_maskRef != null && _groundBit != 0)
-                    _maskRef(projectile) &= ~_groundBit;
+                {
+                    LayerMask mask = _maskRef(projectile);
+                    mask.value &= ~_groundBit;
+                    _maskRef(projectile) = mask;
+                }
             }
         }
 
