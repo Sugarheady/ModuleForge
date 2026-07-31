@@ -69,7 +69,10 @@ namespace ModuleForge
                         "Added module '" + entry.module.Id +
                         "' to the shop at unlock level " +
                         entry.shopUnlockLevel + " for " +
-                        entry.shopPrice + ".");
+                        entry.shopPrice +
+                        (entry.shopPriceIncrement > 0f
+                            ? " (+" + entry.shopPriceIncrement + " per buy)"
+                            : " (fixed price)") + ".");
                 }
 
                 if (configChanged)
@@ -118,7 +121,8 @@ namespace ModuleForge
                     {
                         currencyType = Price.CurrencyType.Resource,
                         resource = money,
-                        amount = 0f
+                        // Added to the price on every purchase (0 = fixed).
+                        amount = entry.shopPriceIncrement
                     }
                 },
                 unlockRequirements = new List<Ingredient>()

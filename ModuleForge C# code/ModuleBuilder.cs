@@ -150,11 +150,48 @@ namespace ModuleForge
                 ((string)root["source"] ?? "loot")
                     .Trim().ToLowerInvariant();
 
+            // "none" = built and registered, but offered NOWHERE - no drops,
+            // no shop. Handy for a module you only want to grant/test another
+            // way, or to park a definition without it cluttering your runs.
+            bool hidden =
+                source == "none" || source == "nowhere" ||
+                source == "hidden" || source == "never";
+
             bool inLoot = source == "loot" || source == "both";
             bool inShop = source == "shop" || source == "both";
 
-            if (!inLoot && !inShop)
+            // Unknown value -> fall back to loot so it isn't lost. ("none" is
+            // a deliberate choice, so it skips that safety net.)
+            if (!inLoot && !inShop && !hidden)
                 inLoot = true;
+
+            float shopPrice = (float?)root["shopPrice"] ?? 100f;
+
+            // Escalating shop price. The game adds a FLAT amount to the price
+            // every time an item is bought (ShopItem.IncreasePrice), so this
+            // is additive, not compounding. "shopPricePercent" is just a
+            // friendlier way to express the same thing as a share of the
+            // base price (167 -> +1.67x base per purchase).
+            float shopPriceIncrement = (float?)root["shopPriceIncrement"] ?? 0f;
+            float? pricePercent = (float?)root["shopPricePercent"];
+            if (shopPriceIncrement <= 0f && pricePercent.HasValue)
+                shopPriceIncrement = shopPrice * (pricePercent.Value / 100f);
+            if (shopPriceIncrement < 0f)
+                shopPriceIncrement = 0f;
+
+            // The game only escalates (and only re-stocks) an item flagged
+            // repeatInShop - otherwise it's removed after one purchase and
+            // the increment would never be used. Turn it on automatically
+            // when an increment was asked for, unless explicitly set.
+            if (shopPriceIncrement > 0f && !repeatInShop.HasValue &&
+                !module.repeatInShop)
+            {
+                module.repeatInShop = true;
+                Log.LogInfo(
+                    fileName + ": shop price increment set, so repeatInShop " +
+                    "was enabled (the game only re-stocks and re-prices " +
+                    "repeatable items).");
+            }
 
             Log.LogInfo(
                 "Built module '" + module.displayName + "' (" +
@@ -168,7 +205,8 @@ namespace ModuleForge
                 inLoot = inLoot,
                 inShop = inShop,
                 lootWeight = (float?)root["lootWeight"] ?? 10f,
-                shopPrice = (float?)root["shopPrice"] ?? 100f,
+                shopPrice = shopPrice,
+                shopPriceIncrement = shopPriceIncrement,
                 shopUnlockLevel = (int?)root["shopUnlockLevel"] ?? 1
             };
         }

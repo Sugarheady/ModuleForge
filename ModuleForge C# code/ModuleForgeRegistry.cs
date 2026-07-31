@@ -18,6 +18,9 @@ namespace ModuleForge
         public bool inShop;
         public float lootWeight;
         public float shopPrice;
+        // Flat amount ADDED to the price each time it's bought (the game's
+        // own escalation model - see ShopItem.IncreasePrice). 0 = fixed price.
+        public float shopPriceIncrement;
         public int shopUnlockLevel;
     }
 
