@@ -67,7 +67,8 @@
         <input type="text" id="f-name" placeholder="MyModule">
         <em>unique id, letters/numbers</em></label>
       <label class="field"><span>displayName</span>
-        <input type="text" data-path="displayName" placeholder="MY MODULE"></label>
+        <input type="text" data-path="displayName" placeholder="MY MODULE">
+        <em>name shown on the module card in-game</em></label>
       <label class="field"><span>target</span>
         <select id="f-target" data-path="target">
           <option value="ship">ship body (stat / regen / shield)</option>
@@ -94,7 +95,8 @@
         <em>fills the icon field below</em></label>
       <label class="field"><span>icon (sprite name)</span>
         <input type="text" id="f-icon-custom" data-path="icon"
-               placeholder="e.g. HUD_GridTiles_12"></label>
+               placeholder="e.g. HUD_GridTiles_12">
+        <em>sprite on the module card - pick one from the dropdown above</em></label>
       <label class="field"><span>icon color (game presets)</span>
         <select id="f-color-preset">
           <option value="">-- pick a color --</option>
@@ -110,10 +112,12 @@
         <em>fills the color field below</em></label>
       <label class="field"><span>color (name or #hex)</span>
         <input type="text" id="f-color-custom" data-path="color"
-               placeholder="ColorRed or #ff5555"></label>
+               placeholder="ColorRed or #ff5555">
+        <em>tints the icon: a game colour name or any #hex value</em></label>
     </div>
     <label class="field" style="margin-top:10px"><span>description</span>
-      <textarea data-path="description" placeholder="Card description..."></textarea></label>
+      <textarea data-path="description" placeholder="Card description..."></textarea>
+      <em>the blurb under the name on the module card</em></label>
   </section>
 
   <section>
@@ -124,13 +128,35 @@
           <option value="loot">loot (crates / bosses)</option>
           <option value="shop">shop only</option>
           <option value="both">loot + shop</option>
-        </select></label>
+          <option value="none">none (never offered)</option>
+        </select>
+        <em>where this module can show up during a run. Pick <b>none</b> to
+            build and register it without it ever appearing - handy for
+            parking a definition or testing without cluttering your
+            runs.</em></label>
       <label class="field" id="f-lootweight-field"><span>loot weight</span>
         <input type="number" step="any" data-path="lootWeight" placeholder="10">
         <em>drop chance vs other modules</em></label>
       <label class="field" id="f-shopprice-field"><span>shop price</span>
         <input type="number" step="1" data-path="shopPrice" placeholder="100">
         <em>cost in money</em></label>
+      <label class="field" id="f-shopincrement-field">
+        <span>shop price increment</span>
+        <input type="number" step="any" data-path="shopPriceIncrement"
+               placeholder="0">
+        <em>added to the price EVERY time it's bought - the game's own model,
+            a flat amount, not compounding. 0 = the price never changes.
+            Stock examples: fire rate / proj speed / spread are 300 then
+            +500 each buy (300, 800, 1300...); extra projectile is 2500 then
+            +1500. Setting this auto-enables repeatInShop, since the game
+            only re-stocks repeatable items.</em></label>
+      <label class="field" id="f-shoppercent-field">
+        <span>shop price increment %</span>
+        <input type="number" step="any" data-path="shopPricePercent"
+               placeholder="167">
+        <em>alternative to the flat amount: express it as a share of the base
+            price (167 = +167% of base per buy, which is the stock 300 -> +500
+            pattern). Ignored if the flat increment above is set.</em></label>
       <label class="field" id="f-shopunlock-field"><span>shop unlock level</span>
         <input type="number" step="1" data-path="shopUnlockLevel" placeholder="1">
         <em>stations to unlock first (0 = first shop)</em></label>
@@ -169,46 +195,65 @@
   // t: number | int | resource | bool | select
   var EFFECTS = {
     "ModifyResourceCapacity": { group:"ship", label:"Resource capacity (+/- max)",
-      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"6"} ] },
+      params:[ {k:"resource",t:"resource",d:"which tank to resize"},
+        {k:"amount",t:"number",ph:"6",d:"how much max capacity to add - negative shrinks it"} ] },
     "ResourceAutoChargeEffect": { group:"ship", label:"Regen (per second)",
-      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.2"} ] },
+      params:[ {k:"resource",t:"resource",d:"which tank refills"},
+        {k:"amount",t:"number",ph:"0.2",d:"units restored every second"} ] },
     "DrainResourceEffect": { group:"ship", label:"Drain (per second; negative = gain)",
-      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.5"} ] },
+      params:[ {k:"resource",t:"resource",d:"which tank drains"},
+        {k:"amount",t:"number",ph:"0.5",d:"units lost per second - use a negative number to gain instead"} ] },
     "AddShieldEffect": { group:"ship", label:"Shield (fraction, 0.5 = 50%)",
-      params:[ {k:"resource",t:"resource"}, {k:"amount",t:"number",ph:"0.5"} ] },
+      params:[ {k:"resource",t:"resource",d:"which damage type it shields against"},
+        {k:"amount",t:"number",ph:"0.5",d:"fraction of that damage blocked - 0.5 = 50%"} ] },
     "ModifyWeaponProperty": { group:"weapon", label:"Weapon stat",
       params:[
         {k:"targetProperty",t:"select",opts:["FireRate","BurstSize","BurstDelay",
           "ProjectileCount","Spread","AngleVariance","AngleOffset","KnockbackForce",
-          "Cost","Range","Speed"]},
-        {k:"deltaCalculationMode",t:"select",opts:["Constant","FromOriginal","FromCurrent"]},
-        {k:"value",t:"number",ph:"1"} ] },
+          "Cost","Range","Speed"],
+          d:"which weapon stat to change (Damage is deliberately unavailable - a game bug)"},
+        {k:"deltaCalculationMode",t:"select",opts:["Constant","FromOriginal","FromCurrent"],
+          d:"Constant = flat +value; FromOriginal = share of the base stat (0.25 = +25%); FromCurrent = share of the current stat"},
+        {k:"value",t:"number",ph:"1",d:"how much to change it by - negative values make the stat worse"} ] },
     "IncreaseExplosionRadiusEffect": { group:"weapon", label:"Explosion radius +",
-      params:[ {k:"increaseAmount",t:"number",ph:"1"} ] },
+      params:[ {k:"increaseAmount",t:"number",ph:"1",d:"extra blast radius, in world units"} ] },
     "AddImpactExplosionEffect": { group:"weapon", label:"Explode on impact (no params)",
       params:[] },
     "AddBurnEffect": { group:"weapon", label:"Burn (per projectile)",
-      params:[ {k:"amount",t:"number",ph:"5"}, {k:"costPerProjectile",t:"number",ph:"0.25"},
-        {k:"costResource",t:"resource"} ] },
+      params:[ {k:"amount",t:"number",ph:"5",d:"how much burn each projectile applies"},
+        {k:"costPerProjectile",t:"number",ph:"0.25",d:"resource spent for every projectile that carries the burn"},
+        {k:"costResource",t:"resource",d:"which tank pays that cost"} ] },
     "BurnTickRateEffect": { group:"weapon", label:"Burn tick rate + (ticks/sec added; enemies only)",
-      params:[ {k:"ticksPerSecond",t:"number",ph:"0.1"} ] },
+      params:[ {k:"ticksPerSecond",t:"number",ph:"0.1",
+        d:"added to how often burn ticks; stacks across copies. Enemies only - your own burn is unaffected"} ] },
     "BurnColorEffect": { group:"weapon", label:"Burn color / RGB (enemies; +terrain optional)",
-      params:[ {k:"color",t:"text",ph:"#00ff00 or ColorBlue"}, {k:"rgb",t:"bool"},
-        {k:"rgbSpeed",t:"number",ph:"0.5"}, {k:"includeTerrain",t:"bool"} ] },
+      params:[ {k:"color",t:"text",ph:"#00ff00 or ColorBlue",
+          d:"flame colour: a game colour name or #hex (ignored while rgb is on)"},
+        {k:"rgb",t:"bool",d:"cycle a rainbow instead of using a fixed colour"},
+        {k:"rgbSpeed",t:"number",ph:"0.5",d:"rainbow speed, in hue cycles per second"},
+        {k:"includeTerrain",t:"bool",d:"also recolour burning terrain, not just enemies"} ] },
     "Phasing": { group:"weapon", label:"Phasing (shots pass through terrain, still hit enemies)",
       params:[] },
     "PierceCap": { group:"weapon", label:"Piercing + cap (pierce N enemies then vanish)",
-      params:[ {k:"pierceCap",t:"int",ph:"2"}, {k:"falloff",t:"number",ph:"0"},
-        {k:"explodeOnLimit",t:"bool"} ] },
+      params:[ {k:"pierceCap",t:"int",ph:"2",d:"enemies pierced THROUGH before it vanishes on the next one; caps stack"},
+        {k:"falloff",t:"number",ph:"0",d:"damage lost per enemy pierced (0.2 = -20% each)"},
+        {k:"explodeOnLimit",t:"bool",d:"explode when it reaches the cap"} ] },
     "AddExplosionEffect": { group:"weapon", label:"Explosion (per projectile)",
-      params:[ {k:"damageType",t:"resource"}, {k:"damageAmount",t:"number",ph:"2"},
-        {k:"costPerProjectile",t:"number",ph:"1"}, {k:"costResource",t:"resource"},
-        {k:"addImpactExplosion",t:"bool"}, {k:"addTimeoutExplosion",t:"bool"},
-        {k:"explosionRadiusIncrement",t:"number",ph:"0"}, {k:"burn",t:"number",ph:"0"} ] },
+      params:[ {k:"damageType",t:"resource",d:"resource/element the blast counts as"},
+        {k:"damageAmount",t:"number",ph:"2",d:"damage the blast deals"},
+        {k:"costPerProjectile",t:"number",ph:"1",d:"resource spent per exploding projectile"},
+        {k:"costResource",t:"resource",d:"which tank pays that cost"},
+        {k:"addImpactExplosion",t:"bool",d:"explode when the shot hits something"},
+        {k:"addTimeoutExplosion",t:"bool",d:"explode when the shot expires on its own"},
+        {k:"explosionRadiusIncrement",t:"number",ph:"0",d:"extra blast radius on top of the base size"},
+        {k:"burn",t:"number",ph:"0",d:"burn applied by the blast"} ] },
     "AddDischargeEffect": { group:"weapon", label:"Discharge / spark (chain)",
-      params:[ {k:"chainLengthIncrement",t:"int",ph:"1"}, {k:"damageIncrement",t:"number",ph:"3"},
-        {k:"impact",t:"bool"}, {k:"timeout",t:"bool"},
-        {k:"costPerProjectile",t:"int",ph:"1"}, {k:"costResource",t:"resource"} ] },
+      params:[ {k:"chainLengthIncrement",t:"int",ph:"1",d:"extra enemies the spark hops to"},
+        {k:"damageIncrement",t:"number",ph:"3",d:"extra damage on each hop"},
+        {k:"impact",t:"bool",d:"spark when the shot hits something"},
+        {k:"timeout",t:"bool",d:"spark when the shot expires on its own"},
+        {k:"costPerProjectile",t:"int",ph:"1",d:"resource spent per projectile that sparks"},
+        {k:"costResource",t:"resource",d:"which tank pays that cost"} ] },
   };
 
   var output=document.getElementById("output");
@@ -259,6 +304,7 @@
         h+='<input type="number" step="any" data-key="'+p.k+'" data-t="'+p.t+'" placeholder="'+
            (p.ph||'')+'">';
       }
+      if(p.d) h+='<em>'+p.d+'</em>';
       h+='</label>';
     }
     h+='</div>';
@@ -364,9 +410,13 @@
   function refresh(){
     // availability field visibility
     var src=document.getElementById("f-source").value;
-    document.getElementById("f-lootweight-field").classList.toggle("hidden", src==="shop");
-    document.getElementById("f-shopprice-field").classList.toggle("hidden", src==="loot");
-    document.getElementById("f-shopunlock-field").classList.toggle("hidden", src==="loot");
+    var showLoot = (src==="loot" || src==="both");
+    var showShop = (src==="shop" || src==="both");
+    document.getElementById("f-lootweight-field").classList.toggle("hidden", !showLoot);
+    document.getElementById("f-shopprice-field").classList.toggle("hidden", !showShop);
+    document.getElementById("f-shopincrement-field").classList.toggle("hidden", !showShop);
+    document.getElementById("f-shoppercent-field").classList.toggle("hidden", !showShop);
+    document.getElementById("f-shopunlock-field").classList.toggle("hidden", !showShop);
     output.textContent=JSON.stringify(build(),null,2);
   }
 

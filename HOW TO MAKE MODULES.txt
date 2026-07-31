@@ -52,8 +52,9 @@ Errors are logged to <game>\BepInEx\LogOutput.log (search
   "target": "weapon",           <- "ship" or "weapon" (default ship)
   "icon": "HUD_GridTiles_10",   <- module icon sprite (section 6)
   "color": "#ff5555",           <- icon tint: game color or #hex
-  "source": "both",             <- "loot" / "shop" / "both"
+  "source": "both",             <- "loot" / "shop" / "both" / "none"
   "shopPrice": 150,             <- shop cost in money
+  "shopPriceIncrement": 500,    <- added per purchase (0 = fixed price)
   "shopUnlockLevel": 2,         <- stations to unlock first (0 = first)
   "lootWeight": 10,             <- drop chance vs other modules
   "effects": [ ...one or more effect objects... ]   <- REQUIRED
@@ -135,6 +136,16 @@ WEAPON effects (use with "target": "weapon"):
        explodeOnLimit  explode when it hits the cap
      (Projectile weapons only.)
 
+  WHERE THE NUMBERS SHOW UP
+  Hovering the MODULE (on your ship grid) shows what THAT module adds -
+  "PIERCE +2" (and, while installed, the running ship total as old > new),
+  or "PHASING ON". Hovering the WEAPON shows the COMBINED total for that
+  weapon - "PIERCE 4" / "PHASING ON" - adding the weapon's own built-in
+  pierce (Weapon Forge "pierceLimit") to every equipped pierce module.
+  NOTE: the game only draws effect lines for a module that's on the SHIP
+  GRID - a module sitting in the SHOP list shows just its name/description
+  (that's stock behavior, all modules are like that).
+
 The burn/explosion/discharge effects only fire on PROJECTILE weapons.
 Keep weapon stats sane: ProjectileCount/BurstSize should end >=1,
 FireRate stays >0, Spread >=0 (it clamps).
@@ -174,7 +185,34 @@ source:
   "loot"  only from crates/bosses (default)
   "shop"  only in the shop
   "both"  both
+  "none"  NEVER offered - no drops, no shop. The module is still built and
+          registered, so it is handy for parking a definition, or for
+          testing something without it cluttering your runs.
 shopPrice        cost in money (default 100)
+shopPriceIncrement  how much is ADDED to the price every time the module
+                 is bought (default 0 = the price never changes).
+
+                 HOW THE GAME DOES IT: PUNK escalates repeat purchases by
+                 adding a FLAT amount each time - it is NOT a percentage
+                 and it does not compound. A module priced 300 with an
+                 increment of 500 costs 300, then 800, then 1300, 1800...
+                 Real values from the game's own shop table:
+                   Fire rate / Proj speed / Spread / Burst / Range
+                                            300  then +500 each buy
+                   Extra projectile         2500 then +1500 each buy
+                   Add Health               200  then +500 each buy
+                   Add Fuel / Add Stamina   200  then +400 each buy
+                   Power core / Regen       1000 then +1000 each buy
+                   Shields                  4000-5000 then +1000 each buy
+                 Most one-off modules simply leave the increment at 0.
+
+                 NOTE: the game only re-stocks and re-prices an item that
+                 is flagged repeatInShop, so setting an increment turns
+                 repeatInShop on for you (unless you set it yourself).
+shopPricePercent friendlier way to say the same thing: the increment as a
+                 share of the base price. 167 on a 300 module = +500 per
+                 buy, matching the stock stat modules. Ignored if
+                 shopPriceIncrement is set.
 shopUnlockLevel  how many STATIONS you must unlock before it can appear
                  in the shop (default 1; 0 = the very first shop).
                  PUNK gates the shop by station count.
