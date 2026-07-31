@@ -101,4 +101,3 @@ Your pierce and phasing modules also **report themselves on the card** — hover
 
 ---
 
-*Built with [Claude Code](https://claude.com/claude-code) against the game's decompiled assemblies.*
