@@ -144,6 +144,57 @@ namespace ModuleForge
             if (canBeBoosted.HasValue)
                 module.canBeBoosted = canBeBoosted.Value;
 
+            // The one-shot sound when this module is DROPPED onto the ship
+            // grid. Exactly one call site in the game -
+            // ModuleGridScreen: AudioManager.PlaySfx(module.Data.gridPlacementSfx)
+            // - so it is purely the placement click and cannot leak into
+            // anything else.
+            var gridSfx = (string)root["gridPlacementSfx"];
+            if (!string.IsNullOrEmpty(gridSfx))
+            {
+                string wanted = gridSfx.Trim();
+
+                // A file name from WeaponForge's "sounds" folder works here
+                // too, not just a raw audio guid - borrowed through
+                // ForgeInterop so there is one sounds folder shared by both
+                // mods rather than a second copy of the audio pipeline.
+                string custom =
+                    ForgeInterop.TryResolveSound(wanted, fileName);
+
+                if (custom != null)
+                {
+                    module.gridPlacementSfx = custom;
+
+                    Log.LogInfo(
+                        fileName + ": gridPlacementSfx -> custom sound '" +
+                        wanted + "' (via WeaponForge).");
+                }
+                else
+                {
+                    module.gridPlacementSfx = wanted;
+
+                    if (!ForgeInterop.IsKnownSoundGuid(wanted))
+                    {
+                        Log.LogWarning(
+                            fileName + ": gridPlacementSfx '" + wanted +
+                            "' is neither a custom sound nor a sound id this " +
+                            "game has, so placing the module will be silent." +
+                            (ForgeInterop.HasCustomSounds
+                                ? " Custom sounds are named after their file " +
+                                  "in WeaponForge's 'sounds' folder, without " +
+                                  "the extension."
+                                : " (Custom sound names need WeaponForge " +
+                                  "installed - it owns the sounds folder.)"));
+                    }
+                    else
+                    {
+                        Log.LogInfo(
+                            fileName + ": gridPlacementSfx set (plays when " +
+                            "the module is placed on the grid).");
+                    }
+                }
+            }
+
             // Availability: loot / shop / both (default loot). Modules
             // aren't loadout picks, so there is no "starter".
             string source =

@@ -21,6 +21,10 @@ namespace ModuleForge
         private static MethodInfo _isPhasing;   // ForgeWeaponInfo.IsPhasing(WeaponData)
         private static MethodInfo _tryGetPierce; // ForgeWeaponInfo.TryGetPierce(WeaponData, out int)
 
+        private static MethodInfo _sfxResolve;   // ForgeSfxRegistry.Resolve(...)
+        private static MethodInfo _sfxKnownGuid; // ForgeSfxRegistry.KnownGuid(string)
+        private static MethodInfo _soundLoadAll; // ForgeSoundLibrary.LoadAll()
+
         private static void Ensure()
         {
             if (_init)
@@ -44,10 +48,88 @@ namespace ModuleForge
                         info, "IsPhasing", new[] { typeof(WeaponData) });
                     _tryGetPierce = AccessTools.Method(info, "TryGetPierce");
                 }
+
+                // WeaponForge owns the custom-audio pipeline (it loads a
+                // "sounds" folder, decodes WAV itself, and registers each clip
+                // as a real Sfx in the game's audio database). Rather than
+                // duplicating all of that here, ModuleForge borrows it when
+                // WeaponForge is installed - so there is ONE sounds folder and
+                // one set of names across both mods.
+                Type sfx = AccessTools.TypeByName("WeaponForge.ForgeSfxRegistry");
+                if (sfx != null)
+                {
+                    _sfxResolve = AccessTools.Method(sfx, "Resolve");
+                    _sfxKnownGuid = AccessTools.Method(sfx, "KnownGuid");
+                }
+
+                Type lib = AccessTools.TypeByName("WeaponForge.ForgeSoundLibrary");
+                if (lib != null)
+                    _soundLoadAll = AccessTools.Method(lib, "LoadAll");
             }
             catch
             {
                 // WeaponForge absent or incompatible - stay dormant.
+            }
+        }
+
+        // Turn a custom sound NAME into a registered Sfx guid, via WeaponForge.
+        //
+        // Returns null when WeaponForge is not installed, or when the name is
+        // not one of its loaded sounds - in both cases the caller should treat
+        // the value as a plain guid and pass it through untouched.
+        public static string TryResolveSound(string name, string fileName)
+        {
+            Ensure();
+
+            if (_sfxResolve == null || string.IsNullOrEmpty(name))
+                return null;
+
+            try
+            {
+                // Load order between two independent BepInEx plugins is not
+                // guaranteed, so make sure the folder has been scanned before
+                // asking about a name. LoadAll is idempotent.
+                if (_soundLoadAll != null)
+                    _soundLoadAll.Invoke(null, null);
+
+                // Resolve(soundName, inheritFrom, forceLoop, fileName).
+                // No slot to inherit from here and it is a one-shot click.
+                return (string)_sfxResolve.Invoke(
+                    null, new object[] { name, null, false, fileName });
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // Does the GAME already know this sound id? Answers true when we cannot
+        // tell (WeaponForge absent), so a stock guid is never wrongly reported
+        // as a typo.
+        public static bool IsKnownSoundGuid(string guid)
+        {
+            Ensure();
+
+            if (_sfxKnownGuid == null || string.IsNullOrEmpty(guid))
+                return true;
+
+            try
+            {
+                return (bool)_sfxKnownGuid.Invoke(null, new object[] { guid });
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        // True when WeaponForge's audio pipeline is available at all.
+        public static bool HasCustomSounds
+        {
+            get
+            {
+                Ensure();
+                return _sfxResolve != null;
             }
         }
 

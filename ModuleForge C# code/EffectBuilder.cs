@@ -271,14 +271,21 @@ namespace ModuleForge
                 Enum.Parse(typeof(ModifyWeaponProperty.TargetProperty),
                     targetStr, true);
 
-            // The game's Damage applyer double-adds (known bug) - steer
-            // damage through explosion/discharge/burn instead.
+            // Damage is genuinely broken in the game and stays blocked.
+            // Verified in ModifyWeaponProperty's applyer table: eleven of the
+            // twelve ASSIGN the computed result (weapon.FireRate = value),
+            // but Damage does
+            //     weapon.Damage = new Damage(weapon.Damage.amount + value, ...)
+            // and `value` is ALREADY current+delta, so the current amount is
+            // counted twice - a +2 gives you +2 plus the whole base again.
             if (target == ModifyWeaponProperty.TargetProperty.Damage)
             {
                 Log.LogWarning(
                     fileName + ": weapon stat 'Damage' is broken in the " +
-                    "game (double-adds) - use an explosion/discharge/burn " +
-                    "effect for damage instead. Skipped.");
+                    "game and is skipped. Its applyer adds the result to the " +
+                    "current damage, but the result already includes it, so " +
+                    "the base damage lands twice. Use an explosion / " +
+                    "discharge / burn effect to add damage instead.");
                 return null;
             }
 
@@ -289,13 +296,63 @@ namespace ModuleForge
                 Enum.Parse(typeof(ModifyWeaponProperty.DeltaCalculationMode),
                     modeStr, true);
 
+            // Multiply IS implemented, contrary to the note that used to sit
+            // here. ModifyWeaponProperty.Modify does
+            //     (operation == Add) ? (current + delta) : (current * delta)
+            // and every non-Damage applyer assigns that result cleanly, so
+            // "operation": "Multiply" works on all eleven usable properties.
+            // It is the natural way to write "+50% fire rate" instead of
+            // having to know the weapon's base number.
+            var operation = ModifyWeaponProperty.Operation.Add;
+            string opStr = (string)entry["operation"];
+
+            if (!string.IsNullOrEmpty(opStr))
+            {
+                try
+                {
+                    operation = (ModifyWeaponProperty.Operation)
+                        Enum.Parse(
+                            typeof(ModifyWeaponProperty.Operation),
+                            opStr.Trim(), true);
+                }
+                catch
+                {
+                    Log.LogWarning(
+                        fileName + ": operation '" + opStr + "' is not " +
+                        "recognised - use \"Add\" or \"Multiply\". " +
+                        "Falling back to Add.");
+                }
+            }
+
             var mwp = new ModifyWeaponProperty();
 
             _mwpTarget.SetValue(mwp, target);
-            // Operation is forced to Add - Multiply is unimplemented.
-            _mwpOperation.SetValue(mwp, ModifyWeaponProperty.Operation.Add);
+            _mwpOperation.SetValue(mwp, operation);
             _mwpDeltaMode.SetValue(mwp, mode);
             _mwpValue.SetValue(mwp, Series(entry["value"] ?? entry["amount"]));
+
+            // Multiply reads the value as a FACTOR, so the two easy mistakes
+            // are worth naming: 0 wipes the stat out, and a value below 1
+            // makes it worse rather than better.
+            if (operation == ModifyWeaponProperty.Operation.Multiply)
+            {
+                float v = (float?)(entry["value"] ?? entry["amount"]) ?? 0f;
+
+                if (v == 0f)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"operation\": \"Multiply\" with a " +
+                        "value of 0 sets " + target + " to ZERO. For " +
+                        "\"+50%\" use 1.5.");
+                }
+                else if (v > 0f && v < 1f)
+                {
+                    Log.LogInfo(
+                        fileName + ": Multiply by " + v + " REDUCES " +
+                        target + " to " + (v * 100f) +
+                        "% - intended for a downside?");
+                }
+            }
 
             return mwp;
         }
