@@ -160,6 +160,36 @@
       <label class="field" id="f-shopunlock-field"><span>shop unlock level</span>
         <input type="number" step="1" data-path="shopUnlockLevel" placeholder="1">
         <em>stations to unlock first (0 = first shop)</em></label>
+      <label class="field"><span>repeatInShop</span>
+        <select data-path="repeatInShop" data-type="bool">
+          <option value="">keep default</option>
+          <option value="true">true - can be bought again</option>
+          <option value="false">false - once per run</option>
+        </select>
+        <em>whether the shop will offer this module <b>more than once</b> in a
+            run. Off by default: the game removes a module from the pool once
+            you have bought or picked one up. Setting a
+            <b>shop price increment</b> above turns this on automatically,
+            since a rising price only makes sense on something you can buy
+            repeatedly.</em></label>
+      <label class="field"><span>gridPlacementSfx <span class="tag">accepts YOUR sounds</span></span>
+        <input type="text" data-path="gridPlacementSfx"
+               placeholder="myclick, or an audio guid">
+        <em>the click when this module is <b>dropped onto the ship grid</b>.
+            There is exactly one place in the game that plays it
+            (<code>ModuleGridScreen</code> on drop), so it cannot leak
+            anywhere else. Stock modules leave it silent, so this is free
+            character.
+            <br><br>Takes an audio <b>GUID</b>, <i>or</i> the name of a file in
+            <b>WeaponForge's <code>sounds</code> folder</b> (without the
+            extension). ModuleForge borrows WeaponForge's audio pipeline rather
+            than keeping a second copy, so there is <b>one sounds folder and
+            one set of names</b> across both mods &mdash; drop
+            <code>myclick.wav</code> in there and write
+            <code>myclick</code> here.
+            <br>Needs WeaponForge installed for custom names; with it absent
+            this still accepts a plain GUID, and the log says so rather than
+            going quietly silent.</em></label>
     </div>
   </section>
 
@@ -212,9 +242,11 @@
           "ProjectileCount","Spread","AngleVariance","AngleOffset","KnockbackForce",
           "Cost","Range","Speed"],
           d:"which weapon stat to change (Damage is deliberately unavailable - a game bug)"},
+        {k:"operation",t:"select",opts:["Add","Multiply"],
+          d:"Add = the value is added on. Multiply = the stat is MULTIPLIED by the value, so 1.5 is +50% and 2 is double - the easy way to write a percentage without knowing the weapon's base number. Careful: with Multiply, 0 wipes the stat out and anything under 1 makes it worse (which is a fine way to build a downside)."},
         {k:"deltaCalculationMode",t:"select",opts:["Constant","FromOriginal","FromCurrent"],
-          d:"Constant = flat +value; FromOriginal = share of the base stat (0.25 = +25%); FromCurrent = share of the current stat"},
-        {k:"value",t:"number",ph:"1",d:"how much to change it by - negative values make the stat worse"} ] },
+          d:"how the value is read BEFORE the operation. Constant = use it as-is; FromOriginal = as a share of the base stat (0.25 = a quarter of base); FromCurrent = as a share of the stat right now. Leave on Constant unless you want the effect to scale with other modules."},
+        {k:"value",t:"number",ph:"1",d:"how much to change it by. With Add, negative values make the stat worse; with Multiply, use 1.5 for +50%"} ] },
     "IncreaseExplosionRadiusEffect": { group:"weapon", label:"Explosion radius +",
       params:[ {k:"increaseAmount",t:"number",ph:"1",d:"extra blast radius, in world units"} ] },
     "AddImpactExplosionEffect": { group:"weapon", label:"Explode on impact (no params)",
@@ -384,7 +416,8 @@
       if(raw===null||String(raw).trim()==="") continue;
       raw=String(raw).trim();
       var path=el.getAttribute("data-path");
-      if(el.type==="number"){ var v=parseFloat(raw); if(isNaN(v)) continue; out[path]=v; }
+      if(el.getAttribute("data-type")==="bool"){ out[path]=(raw==="true"); }
+      else if(el.type==="number"){ var v=parseFloat(raw); if(isNaN(v)) continue; out[path]=v; }
       else out[path]=raw;
     }
 
@@ -395,7 +428,7 @@
     // Ordered output
     var keys=["name","displayName","description","target","icon","color",
               "source","lootWeight","shopPrice","shopUnlockLevel",
-              "repeatInShop","canBeBoosted","effects"];
+              "repeatInShop","canBeBoosted","gridPlacementSfx","effects"];
     var ordered={};
     for(var k=0;k<keys.length;k++) if(keys[k] in out) ordered[keys[k]]=out[keys[k]];
     for(var key in out) if(!(key in ordered)) ordered[key]=out[key];

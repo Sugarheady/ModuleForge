@@ -85,14 +85,34 @@ SHIP effects (use with "target": "ship"):
   AddShieldEffect         { resource, amount }        shield; 0.5 = 50%
 
 WEAPON effects (use with "target": "weapon"):
-  ModifyWeaponProperty { targetProperty, deltaCalculationMode, value }
+  ModifyWeaponProperty { targetProperty, operation, deltaCalculationMode,
+                         value }
      targetProperty: FireRate, BurstSize, BurstDelay, ProjectileCount,
        Spread, AngleVariance, AngleOffset, KnockbackForce, Cost, Range,
-       Speed  (Damage is intentionally unavailable - a game bug)
-     deltaCalculationMode:
-       "Constant"     flat +value  (e.g. +1 projectile)
-       "FromOriginal" +value * base stat  (0.25 = +25%)
-       "FromCurrent"  +value * current stat
+       Speed  (Damage is intentionally unavailable - see below)
+     operation:
+       "Add"       (default) the value is ADDED to the stat
+       "Multiply"  the stat is MULTIPLIED by the value, so 1.5 = +50%
+                   and 2 = double. This is the easy way to write a
+                   percentage without knowing the weapon's base number.
+                   CAREFUL: 0 wipes the stat out entirely, and anything
+                   below 1 makes it worse (which is a perfectly good way
+                   to build a deliberate downside).
+     deltaCalculationMode: how "value" is read BEFORE the operation
+       "Constant"     use it as-is  (e.g. +1 projectile)
+       "FromOriginal" value * base stat  (0.25 = a quarter of base)
+       "FromCurrent"  value * current stat
+       Leave this on Constant unless you want the effect to scale with
+       whatever other modules have already done.
+
+     WHY DAMAGE IS BLOCKED. It is a genuine bug in the game, not caution
+     on our part. Eleven of the twelve stat appliers ASSIGN their result
+     (weapon.FireRate = value), but Damage does
+         weapon.Damage = new Damage(weapon.Damage.amount + value, ...)
+     and "value" there is ALREADY current+delta - so the base damage gets
+     counted twice. A "+2" would actually give you +2 plus another whole
+     copy of the weapon's base damage. Use an explosion / discharge /
+     burn effect to add damage instead.
   IncreaseExplosionRadiusEffect { increaseAmount }
   AddImpactExplosionEffect      { }        projectiles explode on hit
   AddBurnEffect        { amount, costPerProjectile, costResource }
@@ -218,6 +238,24 @@ shopUnlockLevel  how many STATIONS you must unlock before it can appear
                  PUNK gates the shop by station count.
 lootWeight       drop chance vs other modules in the same crate pool
                  (default 10; stock modules sit around 10).
+repeatInShop     true = the shop may offer this module MORE THAN ONCE in
+                 a run. Off by default: the game drops a module from the
+                 pool once you have bought or picked one up. Setting
+                 shopPriceIncrement turns this on for you, since a rising
+                 price only makes sense on a repeat buy.
+gridPlacementSfx the click when the module is DROPPED ONTO THE SHIP GRID.
+                 There is exactly one place in the game that plays it
+                 (ModuleGridScreen, on drop), so it cannot leak into
+                 anything else. Stock modules leave it empty, i.e. silent,
+                 so this is free character.
+                 Takes an audio GUID, OR the name of a file in
+                 WEAPONFORGE'S "sounds" folder without the extension:
+                     "gridPlacementSfx": "myclick"
+                 ModuleForge borrows WeaponForge's audio pipeline instead
+                 of keeping a second copy, so there is ONE sounds folder
+                 and one set of names across both mods. Custom names need
+                 WeaponForge installed; without it a plain GUID still
+                 works and the log tells you which case you are in.
 
 Custom modules are registered at startup, so save/continue works.
 Note: each shop tier rolls once as you pass it - to see a new shop
