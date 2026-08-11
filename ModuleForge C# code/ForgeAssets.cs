@@ -82,17 +82,64 @@ namespace ModuleForge
             return res;
         }
 
-        public static Sprite ResolveSprite(string name)
+        // The picture on the module card. Accepts a stock sprite name and
+        // also your OWN art, by the name it has in Weapon Forge's sprites
+        // folder - that mod owns the whole import pipeline and this one
+        // borrows it, so there is a single folder and a single set of names
+        // across both. Without Weapon Forge installed, only stock sprites
+        // resolve and the warning says so.
+        //
+        // Stock is tried FIRST: every module written before custom icons
+        // existed names a stock sprite, and a same-named PNG quietly
+        // replacing one would be horrible to debug. A collision is reported
+        // instead.
+        public static Sprite ResolveIcon(string name)
         {
             if (string.IsNullOrEmpty(name))
                 return null;
 
-            var sprite = FindAsset(typeof(Sprite), name) as Sprite;
+            name = name.Trim();
 
-            if (sprite == null)
-                Log.LogWarning("Sprite '" + name + "' not found.");
+            var stock = FindAsset(typeof(Sprite), name) as Sprite;
+            Sprite custom = ForgeInterop.TryResolveIcon(name);
 
-            return sprite;
+            if (stock != null)
+            {
+                if (custom != null)
+                {
+                    Log.LogWarning(
+                        "Icon '" + name + "' is both a game sprite and one " +
+                        "of yours in Weapon Forge's sprites folder. The " +
+                        "GAME's is used. Rename yours to use it.");
+                }
+
+                return stock;
+            }
+
+            if (custom != null)
+                return custom;
+
+            if (!ForgeInterop.HasCustomSprites)
+            {
+                Log.LogWarning(
+                    "Icon '" + name + "' is not a sprite in the game (module " +
+                    "icons are called HUD_GridTiles_NN). If you meant your " +
+                    "own art: custom icons are loaded from Weapon Forge's " +
+                    "'sprites' folder, and Weapon Forge is not installed. " +
+                    "The module keeps the template's icon.");
+            }
+            else
+            {
+                Log.LogWarning(
+                    "Icon '" + name + "' is neither a game sprite nor one of " +
+                    "the " + ForgeInterop.CustomSpriteCount + " in Weapon " +
+                    "Forge's sprites folder. Stock module icons are called " +
+                    "HUD_GridTiles_NN; your own art is named by the PNG " +
+                    "file (or by the name in its sheet .json). The module " +
+                    "keeps the template's icon.");
+            }
+
+            return null;
         }
 
         // "#rrggbb" / html name / a game ColorAsset name ("ColorPurple").

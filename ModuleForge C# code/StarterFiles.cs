@@ -148,7 +148,8 @@ target       ""ship""   = attaches to the SHIP BODY (stat/regen/shield
              ""weapon"" = attaches to a WEAPON/gadget (fire rate,
                         projectiles, etc.). Default ""ship"".
              (The game routes it automatically by this choice.)
-icon         module icon sprite name (see ICONS). e.g. ""HUD_GridTiles_12""
+icon         module icon: a game sprite name like ""HUD_GridTiles_12"", or
+             the name of YOUR OWN art (see ICONS)
 color        icon tint: a game color (ColorWhite/ColorOrange/ColorPurple/
              ColorBlue/ColorRed/ColorYellow/Color Tech/ColorPower) OR a
              hex like ""#ff5555""
@@ -239,11 +240,35 @@ EFFECTS - WEAPON (use with target ""weapon"")
 
 ICONS
 -----
-Module icons are ""HUD_GridTiles_NN"" sprites. Handy ones:
+The game's own icons are ""HUD_GridTiles_NN"" sprites. Handy ones:
   Up 12   Regen 17   Shield 34   Burn 40   Explosion 39   Spark 41
   Extra Projectile 10   Fire Rate 4   Spread 5   Proj Speed 15
   Range 11   Power Core 18   Burst (HUD_Modules_17)
 The Module Builder web page has a dropdown for these.
+
+YOUR OWN ICON ART
+  ""icon"" also takes the name of a picture you drew yourself. Drop a PNG
+  into Weapon Forge's ""sprites"" folder (BepInEx\plugins\sprites) and name
+  it in ""icon"" without the .png:
+
+      myicon.png    ->    ""icon"": ""myicon""
+
+  Weapon Forge owns that folder and this mod borrows it, so there is one
+  folder and one set of names across both mods - which does mean custom
+  icons need Weapon Forge installed. Stock sprites still work without it.
+
+  Four things worth knowing:
+  * DRAW IT SQUARE. The stock icons are 24x24. The card stretches art to
+    a square, so a tall or wide picture looks squashed there while the
+    pickup on the ground keeps its shape. Any size works - it is scaled
+    to match the stock icons - but the shape is yours to get right.
+  * IT IS TINTED by ""color"". Draw in white or grey and let color do the
+    work, or set ""color"": ""#ffffff"" to see your art's own colours.
+  * PNG only. The engine cannot read GIF.
+  * The name is the PNG's file name, or the name inside a sheet .json if
+    you sliced one with Weapon Forge's Sprite Sheet Builder.
+
+  A game sprite always wins a name clash, and the log says so.
 
 NOTES
 -----
@@ -252,7 +277,7 @@ NOTES
 - Ship effects only work on ""ship"" modules; weapon effects only on
   ""weapon"" modules (they attach to different parts of the grid).
 - BurnTickRateEffect is capped: burn can never tick faster than
-  MaxTicksPerSecond (default 100) in BepInEx\config\com.andy.moduleforge.cfg.
+  MaxTicksPerSecond (default 100) in BepInEx\config\com.sugarheady.moduleforge.cfg.
   (The game ticks burn at most once per frame, so a cap above your frame
   rate just means 'every frame'.)
 - Errors are logged to BepInEx/LogOutput.log with the file name.

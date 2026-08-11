@@ -6,7 +6,7 @@ using HarmonyLib;
 namespace ModuleForge
 {
     [BepInPlugin(
-        "com.andy.moduleforge",
+        "com.sugarheady.moduleforge",
         "Module Forge",
         "1.0.0")]
     public class ModuleForgePlugin : BaseUnityPlugin
@@ -32,7 +32,7 @@ namespace ModuleForge
                 ModuleForgeBurn.MaxTicksPerSecond = maxBurnTicks.Value;
 
             var harmony =
-                new Harmony("com.andy.moduleforge");
+                new Harmony("com.sugarheady.moduleforge");
 
             harmony.PatchAll();
 

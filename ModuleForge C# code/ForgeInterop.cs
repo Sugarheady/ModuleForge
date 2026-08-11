@@ -25,6 +25,9 @@ namespace ModuleForge
         private static MethodInfo _sfxKnownGuid; // ForgeSfxRegistry.KnownGuid(string)
         private static MethodInfo _soundLoadAll; // ForgeSoundLibrary.LoadAll()
 
+        private static MethodInfo _iconResolve;  // ForgeSpriteLibrary.ResolveIconSprite(string)
+        private static PropertyInfo _spriteCount; // ForgeSpriteLibrary.Count
+
         private static void Ensure()
         {
             if (_init)
@@ -65,6 +68,19 @@ namespace ModuleForge
                 Type lib = AccessTools.TypeByName("WeaponForge.ForgeSoundLibrary");
                 if (lib != null)
                     _soundLoadAll = AccessTools.Method(lib, "LoadAll");
+
+                // Same bargain for custom ART. Weapon Forge owns the "sprites"
+                // folder, the PNG decode and the sheet slicer; borrowing it
+                // means one folder and one set of names across both mods,
+                // rather than a second copy of all of that here.
+                Type sprites = AccessTools.TypeByName(
+                    "WeaponForge.ForgeSpriteLibrary");
+                if (sprites != null)
+                {
+                    _iconResolve = AccessTools.Method(
+                        sprites, "ResolveIconSprite", new[] { typeof(string) });
+                    _spriteCount = AccessTools.Property(sprites, "Count");
+                }
             }
             catch
             {
@@ -120,6 +136,63 @@ namespace ModuleForge
             catch
             {
                 return true;
+            }
+        }
+
+        // Turn a custom art NAME into a module-icon Sprite, via WeaponForge.
+        //
+        // Returns null when WeaponForge is not installed or when the name is
+        // not one of its loaded sprites; the caller should then treat it as a
+        // stock sprite name. WeaponForge does the folder scan itself (its
+        // LoadAll is idempotent), so plugin load order does not matter, and it
+        // rebuilds the sprite at the scale the game's own icons use.
+        public static Sprite TryResolveIcon(string name)
+        {
+            Ensure();
+
+            if (_iconResolve == null || string.IsNullOrEmpty(name))
+                return null;
+
+            try
+            {
+                return _iconResolve.Invoke(null, new object[] { name })
+                    as Sprite;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // True when WeaponForge's sprite pipeline is available at all.
+        public static bool HasCustomSprites
+        {
+            get
+            {
+                Ensure();
+                return _iconResolve != null;
+            }
+        }
+
+        // How many custom sprites WeaponForge loaded - only for wording a
+        // warning ("you have none" vs "that is not one of them").
+        public static int CustomSpriteCount
+        {
+            get
+            {
+                Ensure();
+
+                if (_spriteCount == null)
+                    return 0;
+
+                try
+                {
+                    return (int)_spriteCount.GetValue(null, null);
+                }
+                catch
+                {
+                    return 0;
+                }
             }
         }
 
