@@ -12,6 +12,8 @@ Built against **PUNK Playtest v0.12.9**.
 
 - **BepInEx** — see [PunkMods](https://github.com/Osanchez/PunkMods) for a good walkthrough of setting up mods for PUNK.
 
+> **Contributing?** [BUILDING.md](BUILDING.md) gets you compiling — you point one property at your own PUNK install and nothing else needs touching. [CLAUDE.md](CLAUDE.md) is the orientation doc: the engine findings this mod is built on, the code conventions, and the traps that cost real time. Worth reading before your first change, whether you're working by hand or with an AI assistant.
+
 ## Install
 
 1. Copy `ModuleForge.dll` into `...\PUNK Playtest\BepInEx\plugins\` (its own folder is fine).
@@ -84,7 +86,7 @@ Your pierce and phasing modules also **report themselves on the card** — hover
 - **Save/continue is safe.** Modules are registered at startup and rebuilt from the registry on load.
 - **Damage is deliberately unavailable** in `ModifyWeaponProperty` — modifying it triggers a bug in the base game.
 - **Burn, explosion and discharge effects only fire on projectile weapons**, and the pierce/phasing modules affect projectiles (for a phasing *laser*, use Weapon Forge's per-weapon flag).
-- **Burn tick rate is hard-capped** so stacking can't run away. The ceiling defaults to 100 ticks/sec and lives in `BepInEx\config\com.andy.moduleforge.cfg`.
+- **Burn tick rate is hard-capped** so stacking can't run away. The ceiling defaults to 100 ticks/sec and lives in `BepInEx\config\com.sugarheady.moduleforge.cfg`.
 - **Effect lines only render for a module on the ship grid** — one sitting in the shop list shows just its name and description. That's stock game behaviour for every module, not a mod quirk.
 - Each shop tier rolls once as you pass it, so start a fresh run to see a new shop module.
 - `Resource Money` is currency and can't be used as a module resource.
@@ -101,3 +103,4 @@ Your pierce and phasing modules also **report themselves on the card** — hover
 
 ---
 
+*Built with [Claude Code](https://claude.com/claude-code) against the game's decompiled assemblies.*

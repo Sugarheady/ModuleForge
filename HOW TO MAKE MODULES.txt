@@ -178,7 +178,7 @@ BURN TICK-RATE CAP
 Burn can never tick faster than a set number of times per second, no
 matter how many BurnTickRateEffect modules you stack. The cap defaults
 to 100 ticks/sec and lives in the BepInEx config file
-(BepInEx\config\com.andy.moduleforge.cfg) under [Burn] MaxTicksPerSecond -
+(BepInEx\config\com.sugarheady.moduleforge.cfg) under [Burn] MaxTicksPerSecond -
 edit it there and restart to change the ceiling. (The game can only tick
 burn once per frame, so a cap above your frame rate just means "every
 frame".)
@@ -243,19 +243,6 @@ repeatInShop     true = the shop may offer this module MORE THAN ONCE in
                  pool once you have bought or picked one up. Setting
                  shopPriceIncrement turns this on for you, since a rising
                  price only makes sense on a repeat buy.
-gridPlacementSfx the click when the module is DROPPED ONTO THE SHIP GRID.
-                 There is exactly one place in the game that plays it
-                 (ModuleGridScreen, on drop), so it cannot leak into
-                 anything else. Stock modules leave it empty, i.e. silent,
-                 so this is free character.
-                 Takes an audio GUID, OR the name of a file in
-                 WEAPONFORGE'S "sounds" folder without the extension:
-                     "gridPlacementSfx": "myclick"
-                 ModuleForge borrows WeaponForge's audio pipeline instead
-                 of keeping a second copy, so there is ONE sounds folder
-                 and one set of names across both mods. Custom names need
-                 WeaponForge installed; without it a plain GUID still
-                 works and the log tells you which case you are in.
 
 Custom modules are registered at startup, so save/continue works.
 Note: each shop tier rolls once as you pass it - to see a new shop

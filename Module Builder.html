@@ -95,8 +95,18 @@
         <em>fills the icon field below</em></label>
       <label class="field"><span>icon (sprite name)</span>
         <input type="text" id="f-icon-custom" data-path="icon"
-               placeholder="e.g. HUD_GridTiles_12">
-        <em>sprite on the module card - pick one from the dropdown above</em></label>
+               placeholder="e.g. HUD_GridTiles_12 or myicon">
+        <em>sprite on the module card. Pick a game icon from the dropdown
+        above, <b>or type the name of your own art</b> &mdash; drop
+        <code>myicon.png</code> into Weapon Forge's <code>sprites</code>
+        folder and type <code>myicon</code> here. Draw it <b>square</b>
+        (stock icons are 24&times;24): the card stretches art to a square,
+        though the pickup on the ground keeps its shape. Any size works.
+        The icon is <b>tinted by the color below</b>, so draw it white or
+        grey, or set the color to <code>#ffffff</code> to see your own
+        colours. Custom art needs Weapon Forge installed (it owns the
+        sprites folder, and both mods share it); game icon names work
+        either way.</em></label>
       <label class="field"><span>icon color (game presets)</span>
         <select id="f-color-preset">
           <option value="">-- pick a color --</option>
@@ -172,24 +182,30 @@
             <b>shop price increment</b> above turns this on automatically,
             since a rising price only makes sense on something you can buy
             repeatedly.</em></label>
-      <label class="field"><span>gridPlacementSfx <span class="tag">accepts YOUR sounds</span></span>
-        <input type="text" data-path="gridPlacementSfx"
-               placeholder="myclick, or an audio guid">
-        <em>the click when this module is <b>dropped onto the ship grid</b>.
-            There is exactly one place in the game that plays it
-            (<code>ModuleGridScreen</code> on drop), so it cannot leak
-            anywhere else. Stock modules leave it silent, so this is free
-            character.
-            <br><br>Takes an audio <b>GUID</b>, <i>or</i> the name of a file in
-            <b>WeaponForge's <code>sounds</code> folder</b> (without the
-            extension). ModuleForge borrows WeaponForge's audio pipeline rather
-            than keeping a second copy, so there is <b>one sounds folder and
-            one set of names</b> across both mods &mdash; drop
-            <code>myclick.wav</code> in there and write
-            <code>myclick</code> here.
-            <br>Needs WeaponForge installed for custom names; with it absent
-            this still accepts a plain GUID, and the log says so rather than
-            going quietly silent.</em></label>
+      <label class="field"><span>canBeBoosted</span>
+        <select data-path="canBeBoosted" data-type="bool">
+          <option value="">keep default (true)</option>
+          <option value="true">true - green-crate boosters can level it</option>
+          <option value="false">false - fixed at level 1 forever</option>
+        </select>
+        <em>whether a <b>BoosterCore</b> from a green crate can raise this
+            module's LEVEL when placed next to it on the grid.
+            <br><br><b>There is no "by how much" here, and that surprises
+            people.</b> A booster projects a little pixel-mask shape onto the
+            grid and every cell of it that overlaps your module adds
+            <b>+1 level</b> — so the amount is decided by the booster's shape
+            and how you position it, not by the module. Place one cleverly and
+            it can level several neighbours, or the same neighbour more than
+            once.
+            <br><br><b>The catch that actually bites:</b> turning this on does
+            nothing on its own. Level only changes an effect if that effect's
+            magnitude is a <i>scaling object</i> rather than a flat number.
+            <code>"value": 2</code> is the same at every level;
+            <code>{ "baseValue": 2, "increaseMethod": "Add", "change": 1 }</code>
+            gains +1 per level. A <code>change</code> of 0 is the same trap in
+            disguise. So for a boostable module you want <b>canBeBoosted true
+            AND a non-zero change</b> — otherwise the booster appears to do
+            nothing and looks like a bug.</em></label>
     </div>
   </section>
 
@@ -208,6 +224,9 @@
   <div class="bar">
     <button id="btn-copy">COPY JSON</button>
     <button id="btn-save">SAVE .JSON FILE</button>
+    <button id="btn-load" class="secondary">LOAD .JSON</button>
+    <input id="f-loadfile" type="file" accept=".json,application/json"
+           style="display:none">
     <button id="btn-reset" class="secondary">RESET</button>
   </div>
   <div id="warnings"></div>
@@ -428,7 +447,7 @@
     // Ordered output
     var keys=["name","displayName","description","target","icon","color",
               "source","lootWeight","shopPrice","shopUnlockLevel",
-              "repeatInShop","canBeBoosted","gridPlacementSfx","effects"];
+              "repeatInShop","canBeBoosted","effects"];
     var ordered={};
     for(var k=0;k<keys.length;k++) if(keys[k] in out) ordered[keys[k]]=out[keys[k]];
     for(var key in out) if(!(key in ordered)) ordered[key]=out[key];
@@ -488,13 +507,94 @@
 
   document.getElementById("btn-reset").addEventListener("click", function(){
     if(!confirm("Clear the whole form?")) return;
+    clearForm();
+    refresh();
+  });
+
+  function clearForm(){
     var fields=document.querySelectorAll("#form [data-path], #f-name, #f-icon-preset, #f-color-preset");
     for(var i=0;i<fields.length;i++){
       var el=fields[i];
       if(el.tagName==="SELECT") el.selectedIndex=0; else el.value="";
     }
     effectsList.innerHTML="";
+  }
+
+  // Pull an existing module .json back into the form so it can be edited.
+  // Mirrors build() in reverse: build() writes FLAT keys (out[path]=value),
+  // so every data-path is a top-level key here.
+  function loadObject(obj){
+    if(!obj || typeof obj!=="object" || Array.isArray(obj))
+      throw new Error("that file isn't a module object");
+
+    clearForm();
+    nameInput.value = obj.name || "";
+
+    // target has to land BEFORE any effect row is created: currentTarget()
+    // decides which effect types a row's dropdown even offers, so loading it
+    // late would leave every row pointing at the wrong group.
+    if(obj.target){
+      var tgt=document.querySelector('#form [data-path="target"]');
+      if(tgt) tgt.value=obj.target;
+    }
+
+    var flat=document.querySelectorAll("#form [data-path]");
+    for(var i=0;i<flat.length;i++){
+      var el=flat[i], p=el.getAttribute("data-path");
+      if(!(p in obj)) continue;
+      var v=obj[p];
+      if(v===null||v===undefined) continue;
+      el.value=(typeof v==="boolean")?String(v):v;
+    }
+
+    var effects=Array.isArray(obj.effects)?obj.effects:[];
+    for(var e=0;e<effects.length;e++){
+      var eff=effects[e];
+      if(!eff||!eff.type) continue;
+
+      addEffectRow();
+      var row=effectsList.lastChild;
+      var typeSel=row.querySelector(".eff-type");
+
+      // The file may name an effect from the other group (or one this page
+      // doesn't know). Add it rather than silently snapping to the first
+      // option, which would quietly change what the module does on save.
+      if(!typeSel.querySelector('option[value="'+eff.type+'"]')){
+        var opt=document.createElement("option");
+        opt.value=eff.type;
+        opt.textContent=eff.type+" (from file)";
+        typeSel.appendChild(opt);
+      }
+      typeSel.value=eff.type;
+      renderParams(row.querySelector(".eff-params"), eff.type);
+
+      var inputs=row.querySelectorAll("[data-key]");
+      for(var k=0;k<inputs.length;k++){
+        var ip=inputs[k], key=ip.getAttribute("data-key");
+        if(!(key in eff)) continue;
+        var val=eff[key];
+        if(val===null||val===undefined) continue;
+        ip.value=(typeof val==="boolean")?String(val):val;
+      }
+    }
+
     refresh();
+  }
+
+  document.getElementById("btn-load").addEventListener("click", function(){
+    document.getElementById("f-loadfile").click();
+  });
+
+  document.getElementById("f-loadfile").addEventListener("change", function(){
+    var file=this.files && this.files[0];
+    if(!file) return;
+    var reader=new FileReader();
+    reader.onload=function(){
+      try{ loadObject(JSON.parse(reader.result)); }
+      catch(e){ alert("Couldn't read that file as module JSON:\n"+e.message); }
+    };
+    reader.readAsText(file);
+    this.value="";
   });
 
   // Seed with one effect row to start.
