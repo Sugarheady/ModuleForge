@@ -50,6 +50,16 @@ is not. Keep that line.
 ### Effects and levels
 
 - Every stock effect reads its strength as `effectiveness.GetElement(Module.Level - 1)`.
+- **An effect that should answer to levelling needs `OnRecalculateUnitStats`**, not just a `FloatSeries`.
+  A BoosterCore changes `Module.Level` with no install/uninstall, so `OnInstalled` never re-runs. The
+  chain is: `ModuleInstalled` → `modulesChanged` → next `ModuleGridOwner.OnUpdate` →
+  `Unit.RecalculateStats` → `ModuleGrid.OnRecalculateStats` → each effect's `OnRecalculateUnitStats`.
+  The level-delta pass runs before it, so `Module.Level` is already current when you read it. Effects
+  that push a value into a global accumulator (burn rate, pierce cap) must re-sync there or the boost
+  silently does nothing. `BurnRateModuleEffect` and `PierceModuleEffect` are the reference pair.
+- **`Module Builder.html` can only express scaling through the per-param "per level" box** (`s:true` on
+  the param spec). Adding a new `FloatSeries` param without marking it `s:true` leaves it flat-only from
+  the page, which is the same invisible-booster trap from the other direction.
 - **`FloatSeries.GetElement(i)` is the formula `baseValue + change * i`**, not an array lookup. A
   series with `change: 0` therefore returns the same value at every level and can *never* respond to
   levelling. A custom effect needs **both** `canBeBoosted` **and** a non-zero `change` to react.
@@ -102,9 +112,26 @@ That's stock behaviour for every module, not a mod bug — don't go hunting for 
 - The game runs at **20 pixels per world unit**; stock projectile art is ~7×7 px.
 - Burn is **plain Unity audio/particles**, and the burn engine here patches `DamagableResource.Update`
   plus the burn-particle emit methods. Tick rate is hard-capped so stacking can't run away.
-- Loot: `LootDropper` → `DropTable` → `DropTableWeightedGroup`. `useGroup` stays serialized even when
-  false, so **many tables look live but are inert**. Every module zeroes its own drop weight once you
-  own one, which is why duplicate drops need an explicit override.
+### Loot
+
+`LootDropper` → `DropTable` → `DropTableWeightedGroup`. There is no global "droppable" flag: a module
+drops only if it is in a group that a crate's table references, so `ModuleLootPatch` injects into those
+groups from a `LootSelector.SelectLoot` prefix (hooking the roll guarantees the groups are loaded).
+
+- **`useGroup` stays serialized even when false**, so many tables point at a pool they never draw
+  from — the Level 2 crate, every Box, ten enemy tables. Injecting into those does nothing while the
+  log claims success. Check the flag; this mod shipped without that check and lied about it.
+- Only **8 of 64** tables can drop a module and **5 pools** are ever rolled. Pool size decides real
+  odds: **Tech ~5** stock entries vs **White ~18**, so `lootFrom: "tech"` is the best-odds choice.
+- **Money and Level 2 roll no module at all.** `lootFrom: "money"` / `"level2"` *grafts* one on by
+  appending a new `DropTableItem` — additive, so the crate keeps its normal contents. Grafting is
+  explicit opt-in only; `"all"` must never trigger it, or any loot module would silently rewrite two
+  stock crates for the whole run.
+- `DropTableItem` is a **struct with private `[SerializeField]` fields** — box it, fill by reflection,
+  unbox into the list.
+- Every module zeroes its own drop weight once you own one (`repeatedDropChanceMultiplyer`, 0 on ~120
+  of ~145 stock modules), so duplicates need the explicit `lootRepeat` override. It edits our own
+  clone, so it can never make a stock module repeat.
 
 ## Platform gotchas (.NET 4.7.2 against a Unity 6 game)
 
@@ -139,7 +166,15 @@ The two mods cooperate but must stay independently buildable and runnable:
   and the pierce authority**, and Weapon Forge stands down; pierce caps add into one number and
   stat-card lines merge rather than double-report.
 - This mod **borrows Weapon Forge's audio pipeline** when present, so there is one `sounds` folder and
-  one set of names across both mods. Don't duplicate the decoder here.
+  one set of names across both mods. Don't duplicate the decoder here. Same for the `sprites` folder
+  behind custom icons.
+- **Loot is the opposite call: duplicated, not borrowed.** `ModuleLootPools` is a deliberate copy of
+  `ForgeLootPools` — a table of constant asset names isn't worth a dependency, and each mod must drop
+  loot with the other absent. The two coordinate through **one shared string**: the created Money pool
+  is named `Forge Modules Crate Money` in *both* mods, so `FindObjectsOfTypeAll` finds whichever
+  instance exists and they fill one pool. Both also check `TableAlreadyRolls` before appending a graft,
+  or a player with both mods gets two module rolls out of every Money crate. Rename that constant in
+  one mod only and you reintroduce exactly that bug.
 - If the reflection fails, degrade to doing nothing — never risk two mods fighting over the same patch.
 
 ## House rules

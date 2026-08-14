@@ -147,6 +147,45 @@
       <label class="field" id="f-lootweight-field"><span>loot weight</span>
         <input type="number" step="any" data-path="lootWeight" placeholder="10">
         <em>drop chance vs other modules</em></label>
+      <label class="field" id="f-lootfrom-field"><span>lootFrom (which crate)</span>
+        <select id="f-lootfrom-preset">
+          <option value="">all crates (default)</option>
+          <option value="tech">tech &mdash; best odds (~5 stock entries)</option>
+          <option value="purple">purple / gel</option>
+          <option value="caps">caps / orange</option>
+          <option value="white">white / stamina &mdash; worst odds (~18)</option>
+          <option value="queen">queen (the generic pool)</option>
+          <option value="money">money &mdash; ADDS a roll; yours always drops</option>
+          <option value="level2">level2 &mdash; ADDS a roll; competes with 5 stock</option>
+        </select>
+        <em>fills the field below</em></label>
+      <label class="field" id="f-lootfromtext-field"><span>lootFrom</span>
+        <input type="text" id="f-lootfrom" data-path="lootFrom"
+               placeholder="leave empty for all crates">
+        <em>Which crates this can drop from. Empty = all of them. The pools are
+            very different sizes, so this is the biggest lever on how often your
+            module actually turns up &mdash; <b>tech</b> has about 5 stock entries
+            to compete with, <b>white</b> about 18.
+            <br>For more than one, separate with commas:
+            <code>tech, caps</code>.
+            <br><b>money</b> and <b>level2</b> don't roll modules at all in the
+            base game &mdash; naming one makes the mod <b>add</b> a module roll to
+            that crate. The crate keeps everything it normally drops and gains a
+            module on top. Nothing else is in the money pool, so yours always
+            drops from it; level2 also revives 5 stock regen/generator modules
+            the game otherwise never rolls.</em></label>
+      <label class="field" id="f-lootrepeat-field"><span>lootRepeat</span>
+        <select data-path="lootRepeat">
+          <option value="">keep default (once per run)</option>
+          <option value="true">true &mdash; can drop again, full chance</option>
+          <option value="false">false &mdash; once per run (stock)</option>
+          <option value="0.5">0.5 &mdash; half as likely each copy owned</option>
+          <option value="0.25">0.25 &mdash; a quarter as likely each copy</option>
+        </select>
+        <em>The game zeroes a module's drop weight once you own one, which is
+            why duplicates never appear. This changes that for <i>your</i>
+            module only &mdash; it edits your own clone and can never make a stock
+            module start repeating.</em></label>
       <label class="field" id="f-shopprice-field"><span>shop price</span>
         <input type="number" step="1" data-path="shopPrice" placeholder="100">
         <em>cost in money</em></label>
@@ -245,16 +284,16 @@
   var EFFECTS = {
     "ModifyResourceCapacity": { group:"ship", label:"Resource capacity (+/- max)",
       params:[ {k:"resource",t:"resource",d:"which tank to resize"},
-        {k:"amount",t:"number",ph:"6",d:"how much max capacity to add - negative shrinks it"} ] },
+        {k:"amount",t:"number",s:true,ph:"6",d:"how much max capacity to add - negative shrinks it"} ] },
     "ResourceAutoChargeEffect": { group:"ship", label:"Regen (per second)",
       params:[ {k:"resource",t:"resource",d:"which tank refills"},
-        {k:"amount",t:"number",ph:"0.2",d:"units restored every second"} ] },
+        {k:"amount",t:"number",s:true,ph:"0.2",d:"units restored every second"} ] },
     "DrainResourceEffect": { group:"ship", label:"Drain (per second; negative = gain)",
       params:[ {k:"resource",t:"resource",d:"which tank drains"},
-        {k:"amount",t:"number",ph:"0.5",d:"units lost per second - use a negative number to gain instead"} ] },
+        {k:"amount",t:"number",s:true,ph:"0.5",d:"units lost per second - use a negative number to gain instead"} ] },
     "AddShieldEffect": { group:"ship", label:"Shield (fraction, 0.5 = 50%)",
       params:[ {k:"resource",t:"resource",d:"which damage type it shields against"},
-        {k:"amount",t:"number",ph:"0.5",d:"fraction of that damage blocked - 0.5 = 50%"} ] },
+        {k:"amount",t:"number",s:true,ph:"0.5",d:"fraction of that damage blocked - 0.5 = 50%"} ] },
     "ModifyWeaponProperty": { group:"weapon", label:"Weapon stat",
       params:[
         {k:"targetProperty",t:"select",opts:["FireRate","BurstSize","BurstDelay",
@@ -265,17 +304,17 @@
           d:"Add = the value is added on. Multiply = the stat is MULTIPLIED by the value, so 1.5 is +50% and 2 is double - the easy way to write a percentage without knowing the weapon's base number. Careful: with Multiply, 0 wipes the stat out and anything under 1 makes it worse (which is a fine way to build a downside)."},
         {k:"deltaCalculationMode",t:"select",opts:["Constant","FromOriginal","FromCurrent"],
           d:"how the value is read BEFORE the operation. Constant = use it as-is; FromOriginal = as a share of the base stat (0.25 = a quarter of base); FromCurrent = as a share of the stat right now. Leave on Constant unless you want the effect to scale with other modules."},
-        {k:"value",t:"number",ph:"1",d:"how much to change it by. With Add, negative values make the stat worse; with Multiply, use 1.5 for +50%"} ] },
+        {k:"value",t:"number",s:true,ph:"1",d:"how much to change it by. With Add, negative values make the stat worse; with Multiply, use 1.5 for +50%"} ] },
     "IncreaseExplosionRadiusEffect": { group:"weapon", label:"Explosion radius +",
       params:[ {k:"increaseAmount",t:"number",ph:"1",d:"extra blast radius, in world units"} ] },
     "AddImpactExplosionEffect": { group:"weapon", label:"Explode on impact (no params)",
       params:[] },
     "AddBurnEffect": { group:"weapon", label:"Burn (per projectile)",
-      params:[ {k:"amount",t:"number",ph:"5",d:"how much burn each projectile applies"},
+      params:[ {k:"amount",t:"number",s:true,ph:"5",d:"how much burn each projectile applies"},
         {k:"costPerProjectile",t:"number",ph:"0.25",d:"resource spent for every projectile that carries the burn"},
         {k:"costResource",t:"resource",d:"which tank pays that cost"} ] },
     "BurnTickRateEffect": { group:"weapon", label:"Burn tick rate + (ticks/sec added; enemies only)",
-      params:[ {k:"ticksPerSecond",t:"number",ph:"0.1",
+      params:[ {k:"ticksPerSecond",t:"number",s:true,ph:"0.1",
         d:"added to how often burn ticks; stacks across copies. Enemies only - your own burn is unaffected"} ] },
     "BurnColorEffect": { group:"weapon", label:"Burn color / RGB (enemies; +terrain optional)",
       params:[ {k:"color",t:"text",ph:"#00ff00 or ColorBlue",
@@ -286,21 +325,21 @@
     "Phasing": { group:"weapon", label:"Phasing (shots pass through terrain, still hit enemies)",
       params:[] },
     "PierceCap": { group:"weapon", label:"Piercing + cap (pierce N enemies then vanish)",
-      params:[ {k:"pierceCap",t:"int",ph:"2",d:"enemies pierced THROUGH before it vanishes on the next one; caps stack"},
-        {k:"falloff",t:"number",ph:"0",d:"damage lost per enemy pierced (0.2 = -20% each)"},
+      params:[ {k:"pierceCap",t:"number",s:true,ph:"2",d:"enemies pierced THROUGH before it vanishes on the next one; caps stack. FRACTIONS WORK: 1.5 means one pierce always and a second one half the time, rolled once per shot"},
+        {k:"falloff",t:"number",s:true,ph:"0",d:"damage lost per enemy pierced (0.2 = -20% each). Clamped to 0-1"},
         {k:"explodeOnLimit",t:"bool",d:"explode when it reaches the cap"} ] },
     "AddExplosionEffect": { group:"weapon", label:"Explosion (per projectile)",
       params:[ {k:"damageType",t:"resource",d:"resource/element the blast counts as"},
-        {k:"damageAmount",t:"number",ph:"2",d:"damage the blast deals"},
+        {k:"damageAmount",t:"number",s:true,ph:"2",d:"damage the blast deals"},
         {k:"costPerProjectile",t:"number",ph:"1",d:"resource spent per exploding projectile"},
         {k:"costResource",t:"resource",d:"which tank pays that cost"},
         {k:"addImpactExplosion",t:"bool",d:"explode when the shot hits something"},
         {k:"addTimeoutExplosion",t:"bool",d:"explode when the shot expires on its own"},
         {k:"explosionRadiusIncrement",t:"number",ph:"0",d:"extra blast radius on top of the base size"},
-        {k:"burn",t:"number",ph:"0",d:"burn applied by the blast"} ] },
+        {k:"burn",t:"number",s:true,ph:"0",d:"burn applied by the blast"} ] },
     "AddDischargeEffect": { group:"weapon", label:"Discharge / spark (chain)",
       params:[ {k:"chainLengthIncrement",t:"int",ph:"1",d:"extra enemies the spark hops to"},
-        {k:"damageIncrement",t:"number",ph:"3",d:"extra damage on each hop"},
+        {k:"damageIncrement",t:"number",s:true,ph:"3",d:"extra damage on each hop"},
         {k:"impact",t:"bool",d:"spark when the shot hits something"},
         {k:"timeout",t:"bool",d:"spark when the shot expires on its own"},
         {k:"costPerProjectile",t:"int",ph:"1",d:"resource spent per projectile that sparks"},
@@ -357,6 +396,19 @@
       }
       if(p.d) h+='<em>'+p.d+'</em>';
       h+='</label>';
+
+      // A scalable param gets a second box: "+ per level". Non-zero folds the
+      // pair into the { baseValue, increaseMethod, change } object the mod
+      // reads as a FloatSeries. Without this the page could only ever write
+      // flat numbers, which is the exact trap the LEVELS note warns about -
+      // a boosted module that visibly does nothing.
+      if(p.s){
+        h+='<label class="field"><span>'+p.k+' &mdash; per level</span>'+
+           '<input type="number" step="any" data-plkey="'+p.k+'" placeholder="0">'+
+           '<em>added to <code>'+p.k+'</code> for each level above 1, so a green-crate '+
+           'BoosterCore beside this module raises it. Leave blank/0 for a flat value '+
+           'that ignores levelling.</em></label>';
+      }
     }
     h+='</div>';
     paramsEl.innerHTML=h;
@@ -415,6 +467,20 @@
         else if(t==="number"){ var n=parseFloat(raw); if(!isNaN(n)) obj[key]=n; }
         else obj[key]=raw; // resource / select
       }
+
+      // Fold "<key> per level" into a scaling object. Only when it is
+      // actually non-zero: a change of 0 is a FloatSeries that returns the
+      // same number at every level, so emitting one would just be noise that
+      // looks like it scales.
+      var perLevel=rows[i].querySelectorAll("[data-plkey]");
+      for(var q=0;q<perLevel.length;q++){
+        var pl=perLevel[q], pk=pl.getAttribute("data-plkey");
+        var pv=parseFloat(String(pl.value).trim());
+        if(isNaN(pv)||pv===0) continue;
+        var base=(typeof obj[pk]==="number")?obj[pk]:0;
+        obj[pk]={ baseValue:base, increaseMethod:"Add", change:pv };
+      }
+
       out.push(obj);
     }
     return out;
@@ -440,14 +506,38 @@
       else out[path]=raw;
     }
 
+    // lootFrom is typed as a comma list because one crate is the common case
+    // and "tech" is friendlier than ["tech"]. Emit a bare string for one pool
+    // and a real array for several - the mod reads either.
+    if(typeof out.lootFrom==="string"){
+      var pools=out.lootFrom.split(",").map(function(s){return s.trim();})
+                            .filter(function(s){return s.length>0;});
+      if(pools.length===0) delete out.lootFrom;
+      else if(pools.length===1) out.lootFrom=pools[0];
+      else out.lootFrom=pools;
+    }
+
+    // lootRepeat comes off a <select>, so it arrives as text. The mod accepts
+    // "true"/"0.5" as strings, but emitting real JSON types keeps the file
+    // clean and matches what someone would hand-write.
+    if(typeof out.lootRepeat==="string"){
+      if(out.lootRepeat==="true") out.lootRepeat=true;
+      else if(out.lootRepeat==="false") out.lootRepeat=false;
+      else {
+        var lr=parseFloat(out.lootRepeat);
+        if(isNaN(lr)) delete out.lootRepeat; else out.lootRepeat=lr;
+      }
+    }
+
     var effects=collectEffects();
     if(effects.length===0) warn.push("⚠ Add at least one effect.");
     out.effects=effects;
 
     // Ordered output
     var keys=["name","displayName","description","target","icon","color",
-              "source","lootWeight","shopPrice","shopUnlockLevel",
-              "repeatInShop","canBeBoosted","effects"];
+              "source","lootWeight","lootFrom","lootRepeat",
+              "shopPrice","shopPriceIncrement","shopPricePercent",
+              "shopUnlockLevel","repeatInShop","canBeBoosted","effects"];
     var ordered={};
     for(var k=0;k<keys.length;k++) if(keys[k] in out) ordered[keys[k]]=out[keys[k]];
     for(var key in out) if(!(key in ordered)) ordered[key]=out[key];
@@ -465,6 +555,9 @@
     var showLoot = (src==="loot" || src==="both");
     var showShop = (src==="shop" || src==="both");
     document.getElementById("f-lootweight-field").classList.toggle("hidden", !showLoot);
+    document.getElementById("f-lootfrom-field").classList.toggle("hidden", !showLoot);
+    document.getElementById("f-lootfromtext-field").classList.toggle("hidden", !showLoot);
+    document.getElementById("f-lootrepeat-field").classList.toggle("hidden", !showLoot);
     document.getElementById("f-shopprice-field").classList.toggle("hidden", !showShop);
     document.getElementById("f-shopincrement-field").classList.toggle("hidden", !showShop);
     document.getElementById("f-shoppercent-field").classList.toggle("hidden", !showShop);
@@ -482,6 +575,11 @@
   });
   document.getElementById("f-icon-preset").addEventListener("change", function(){
     if(this.value) document.getElementById("f-icon-custom").value=this.value; refresh();
+  });
+  // Picking "all crates" is a real choice, not a no-op, so this one clears the
+  // text field rather than only writing to it.
+  document.getElementById("f-lootfrom-preset").addEventListener("change", function(){
+    document.getElementById("f-lootfrom").value=this.value; refresh();
   });
 
   document.getElementById("add-effect").addEventListener("click", addEffectRow);
@@ -512,7 +610,7 @@
   });
 
   function clearForm(){
-    var fields=document.querySelectorAll("#form [data-path], #f-name, #f-icon-preset, #f-color-preset");
+    var fields=document.querySelectorAll("#form [data-path], #f-name, #f-icon-preset, #f-color-preset, #f-lootfrom-preset");
     for(var i=0;i<fields.length;i++){
       var el=fields[i];
       if(el.tagName==="SELECT") el.selectedIndex=0; else el.value="";
@@ -544,6 +642,9 @@
       if(!(p in obj)) continue;
       var v=obj[p];
       if(v===null||v===undefined) continue;
+      // build() folds a comma list into an array for several pools, so unfold
+      // it here or LOAD would drop every pool after the first.
+      if(p==="lootFrom"&&Array.isArray(v)) v=v.join(", ");
       el.value=(typeof v==="boolean")?String(v):v;
     }
 
@@ -574,6 +675,15 @@
         if(!(key in eff)) continue;
         var val=eff[key];
         if(val===null||val===undefined) continue;
+        // A scaling object has to be unfolded back into the two boxes, or
+        // LOAD would put "[object Object]" in the value field and silently
+        // lose the per-level part on the next save.
+        if(typeof val==="object"&&!Array.isArray(val)){
+          ip.value=(val.baseValue!==undefined&&val.baseValue!==null)?val.baseValue:"";
+          var plIn=row.querySelector('[data-plkey="'+key+'"]');
+          if(plIn) plIn.value=(val.change!==undefined&&val.change!==null)?val.change:"";
+          continue;
+        }
         ip.value=(typeof val==="boolean")?String(val):val;
       }
     }
