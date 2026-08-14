@@ -122,12 +122,15 @@ namespace ModuleForge
                     case "piercing":
                         return new PierceModuleEffect
                         {
-                            pierceCap =
-                                (int?)entry["pierceCap"] ??
-                                (int?)entry["cap"] ?? 2,
-                            falloff =
-                                (float?)entry["falloff"] ??
-                                (float?)entry["pierceDamageFalloff"] ?? 0f,
+                            // A series, so it can scale with level - and a
+                            // FLOAT, so 1.5 means "a second pierce half the
+                            // time". Defaults to a flat 2 when absent, which
+                            // is what it has always been.
+                            pierceCap = SeriesOr(
+                                entry["pierceCap"] ?? entry["cap"], 2f),
+                            falloff = Series(
+                                entry["falloff"] ??
+                                entry["pierceDamageFalloff"]),
                             explodeOnLimit =
                                 (bool?)entry["explodeOnLimit"] ??
                                 (bool?)entry["pierceExplodeOnLimit"] ?? false
@@ -355,6 +358,23 @@ namespace ModuleForge
             }
 
             return mwp;
+        }
+
+        // Series() with a non-zero default for an absent key. Series(null)
+        // gives 0, which is right for an "amount" but wrong for something
+        // like pierceCap whose historical default is 2.
+        private static FloatSeries SeriesOr(JToken token, float fallback)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+            {
+                var flat = new FloatSeries();
+                flat.increaseMethod = FloatSeries.IncreaseMethod.Add;
+                flat.change = 0f;
+                flat.baseValue = fallback;
+                return flat;
+            }
+
+            return Series(token);
         }
 
         // {baseValue, increaseMethod, change} or a plain number (flat).

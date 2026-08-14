@@ -17,6 +17,11 @@ namespace ModuleForge
         public bool inLoot;
         public bool inShop;
         public float lootWeight;
+
+        // Which crate module pools this module may drop from, as canonical
+        // DropGroup asset names. null or empty = every pool (the old
+        // all-or-nothing behaviour, still the default).
+        public string[] lootGroups;
         public float shopPrice;
         // Flat amount ADDED to the price each time it's bought (the game's
         // own escalation model - see ShopItem.IncreasePrice). 0 = fixed price.

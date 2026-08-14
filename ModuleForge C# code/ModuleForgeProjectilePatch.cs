@@ -43,7 +43,7 @@ namespace ModuleForge
                     // baked cap from WeaponForge, if any. The two ADD UP into
                     // one counter here (ModuleForge owns counting; WeaponForge
                     // stands down when we're installed).
-                    int cap;
+                    float cap;
                     float falloff;
                     bool explode;
                     bool haveModule = ModuleForgeProjectile.TryGetPierce(
@@ -57,8 +57,13 @@ namespace ModuleForge
 
                     if (haveModule || haveWeapon)
                     {
-                        int totalCap =
-                            (haveModule ? cap : 0) + (haveWeapon ? wCap : 0);
+                        // The module cap may be fractional; the weapon's own
+                        // baked cap from WeaponForge is a whole number. Sum
+                        // first, THEN roll once - so 0.5 from a module and
+                        // 0.5 from another add up to a guaranteed pierce
+                        // instead of two coin flips that usually lose.
+                        float totalCap =
+                            (haveModule ? cap : 0f) + (haveWeapon ? wCap : 0);
                         float totalFalloff = Mathf.Max(
                             haveModule ? falloff : 0f, haveWeapon ? wFalloff : 0f);
                         bool totalExplode =
@@ -76,7 +81,7 @@ namespace ModuleForge
                         var pc = __instance.GetComponent<ModuleForgePierceCap>();
                         if (pc == null)
                             pc = __instance.gameObject.AddComponent<ModuleForgePierceCap>();
-                        pc.limit = Mathf.Max(0, totalCap);
+                        pc.limit = ModuleForgeProjectile.ResolveCap(totalCap);
                         pc.falloff = totalFalloff;
                         pc.explodeOnLimit = totalExplode;
                     }

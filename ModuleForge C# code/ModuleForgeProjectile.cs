@@ -39,9 +39,16 @@ namespace ModuleForge
         }
 
         // ---- Capped piercing ----
+        //
+        // The cap is a FLOAT, not an int, so a module's level can buy a
+        // FRACTION of a pierce: 1.5 means "one pierce always, a second one
+        // half the time". The roll happens once per projectile at Shoot (see
+        // ResolveCap), so a shot either has the extra pierce for its whole
+        // flight or it doesn't - rolling per hit would make the same bullet
+        // behave differently against each enemy, which reads as a bug.
         private class PierceInfo
         {
-            public int cap;       // summed across equipped pierce modules
+            public float cap;     // summed across equipped pierce modules
             public float falloff; // max across modules
             public bool explode;  // any module wants it
             public int refs;
@@ -51,7 +58,7 @@ namespace ModuleForge
             new Dictionary<Unit.Data, PierceInfo>();
 
         public static void AddPierce(
-            Unit.Data owner, int cap, float falloff, bool explode)
+            Unit.Data owner, float cap, float falloff, bool explode)
         {
             if (owner == null) return;
 
@@ -72,7 +79,7 @@ namespace ModuleForge
             }
         }
 
-        public static void RemovePierce(Unit.Data owner, int cap)
+        public static void RemovePierce(Unit.Data owner, float cap)
         {
             if (owner == null) return;
 
@@ -86,10 +93,26 @@ namespace ModuleForge
             }
         }
 
-        public static bool TryGetPierce(
-            Unit.Data owner, out int cap, out float falloff, out bool explode)
+        // Re-sync one module's contribution after its LEVEL changed while it
+        // stayed installed (a BoosterCore placed beside it). Only the cap can
+        // move; falloff is a max across modules and cannot be un-maxed
+        // without re-polling every module, so it is left alone.
+        public static void AdjustPierce(Unit.Data owner, float delta)
         {
-            cap = 0; falloff = 0f; explode = false;
+            if (owner == null || delta == 0f) return;
+
+            PierceInfo info;
+            if (_pierce.TryGetValue(owner, out info))
+            {
+                info.cap += delta;
+                if (info.cap < 0f) info.cap = 0f;
+            }
+        }
+
+        public static bool TryGetPierce(
+            Unit.Data owner, out float cap, out float falloff, out bool explode)
+        {
+            cap = 0f; falloff = 0f; explode = false;
 
             PierceInfo info;
             if (owner != null && _pierce.TryGetValue(owner, out info))
@@ -102,6 +125,23 @@ namespace ModuleForge
             return false;
         }
 
+        // Turn a fractional cap into the whole number THIS projectile gets:
+        // the guaranteed part, plus the fraction as a chance of one more.
+        // 1.5 -> 1 or 2, evenly. 2.0 -> always 2.
+        public static int ResolveCap(float cap)
+        {
+            if (cap <= 0f)
+                return 0;
+
+            int whole = (int)cap;
+            float fraction = cap - whole;
+
+            if (fraction > 0f && UnityEngine.Random.value < fraction)
+                whole++;
+
+            return whole;
+        }
+
         // ---- Aggregates for the weapon stat card ----
         // Only the player installs these modules, so a global view == the
         // player's total (same assumption ModuleForgeBurn.Delta relies on).
@@ -110,11 +150,13 @@ namespace ModuleForge
             get { return _phasing.Count > 0; }
         }
 
-        public static int PierceCapTotal
+        // Float, so the stat card can honestly say "1.5" rather than
+        // rounding away the fractional pierce the player paid for.
+        public static float PierceCapTotal
         {
             get
             {
-                int total = 0;
+                float total = 0f;
                 foreach (var kv in _pierce)
                     total += kv.Value.cap;
                 return total;

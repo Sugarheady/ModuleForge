@@ -158,6 +158,10 @@ shopPrice    (shop) cost in money (default 100)
 shopUnlockLevel (shop) stations to unlock before it appears (default 1;
              0 = from the first shop)
 lootWeight   (loot) drop chance vs other modules (default 10)
+lootFrom     (loot) WHICH crates it drops from (see LOOT). One name or a
+             list. Left out = all of them.
+lootRepeat   (loot) may it drop more than once per run? true/false, or a
+             number 0..1. Default is the game's ""once only"".
 repeatInShop (optional bool) can reappear in shop after buying
 canBeBoosted (optional bool, default true)
 effects      (required) an array of effect objects (see EFFECTS). You
@@ -171,6 +175,21 @@ that scales with the module's level:
 Flat numbers are the simplest and are level-independent. Negative
 numbers are allowed and produce the opposite effect (e.g. -0.2 fire
 rate = -20%).
+
+LEVELS AND GREEN CRATES. Green crates drop a BoosterCore, and placing one
+next to a module on the grid raises that module's LEVEL. For an effect to
+answer to that it needs BOTH:
+  * ""canBeBoosted"": true on the module (it is true by default), and
+  * a magnitude written as the scaling object above, with a
+    ""change"" that is NOT zero.
+A flat number - or a change of 0 - returns the same value at every level,
+so the booster appears to do nothing. That is the single most common
+""my booster is broken"" cause, and it isn't a bug.
+
+The Module Builder page has a ""<param> - per level"" box beside every
+magnitude that supports this; filling it writes the scaling object for
+you. Levels update live: a boost applies the moment the crate module is
+placed, without re-equipping anything.
 
 EFFECTS - SHIP (use with target ""ship"")
 ----------------------------------------
@@ -234,8 +253,25 @@ EFFECTS - WEAPON (use with target ""weapon"")
 { ""type"": ""PierceCap"", ""pierceCap"": 3, ""falloff"": 0.15,
   ""explodeOnLimit"": false }
     Turns piercing ON and caps it: shots pierce THROUGH pierceCap enemies
-    then vanish on the next contact. falloff = damage lost per pierce.
-    Caps stack across equipped pierce modules. (Projectile weapons only.)
+    then vanish on the next contact. falloff = damage lost per pierce
+    (clamped 0-1). Caps stack across equipped pierce modules.
+    (Projectile weapons only.)
+
+    FRACTIONS WORK. pierceCap is a float, so half a pierce is a real
+    thing: 1.5 pierces once always and TWICE half the time. The coin is
+    flipped once per shot when it is fired, not per enemy - so a given
+    bullet keeps whatever it rolled for its whole flight.
+    Fractions from several modules are summed BEFORE the roll, so 0.5 and
+    0.5 make a guaranteed pierce rather than two flips that usually lose.
+
+    BOTH pierceCap AND falloff take the scaling object, so pierce can
+    grow with a green-crate BoosterCore. This gives +0.5 of a pierce per
+    level - level 1 = 1, level 2 = 1.5, level 3 = 2:
+      { ""type"": ""PierceCap"",
+        ""pierceCap"": { ""baseValue"": 1, ""increaseMethod"": ""Add"",
+                     ""change"": 0.5 } }
+    A negative change on falloff is a nice upgrade curve: the module
+    loses less damage per pierce as it levels.
 (The burn/explosion/discharge effects only fire on PROJECTILE weapons.)
 
 ICONS
@@ -269,6 +305,42 @@ YOUR OWN ICON ART
     you sliced one with Weapon Forge's Sprite Sheet Builder.
 
   A game sprite always wins a name clash, and the log says so.
+
+LOOT - WHICH CRATE DROPS IT
+---------------------------
+By default a loot module can come out of every crate that rolls modules.
+""lootFrom"" narrows that to the crates you name:
+
+    ""lootFrom"": ""tech""
+    ""lootFrom"": [ ""white"", ""caps"" ]
+
+Names: white (aka stamina), caps (aka orange), purple (aka gel), tech,
+queen (the Queen's own generic pool), money, level2, or ""all"".
+
+WHICH ONE TO PICK. The pools are very different sizes, so this is the
+single biggest lever on how often your module actually turns up:
+  tech    ~5 stock entries  -> BEST odds for a custom module
+  purple / caps             -> middling
+  white   ~18 stock entries -> worst odds
+Only 8 of the game's 64 drop tables can produce a module at all, and 5
+pools are ever really rolled, so ""all"" is not as broad as it sounds.
+
+MONEY AND LEVEL2 ARE SPECIAL. Neither crate rolls a module in the base
+game. Naming one makes the mod ADD a module roll to that crate. This is
+additive - the crate keeps every normal drop and gains a module on top -
+and it only happens if a file asks for it by name, never from ""all"".
+  money   nothing else is in that pool, so YOUR module always drops
+  level2  also revives 5 stock regen/generator modules the game never
+          rolls, so you compete with them
+
+DROPPING MORE THAN ONCE. The game zeroes a module's own drop weight once
+you own one, which is why duplicates never appear. ""lootRepeat"" changes
+that for your module only:
+    ""lootRepeat"": false   once per run (the default, stock behaviour)
+    ""lootRepeat"": true    full chance every time
+    ""lootRepeat"": 0.25    each copy you own makes the next 1/4 as likely
+It edits your module's own clone, so it can never make a stock module
+start repeating.
 
 NOTES
 -----

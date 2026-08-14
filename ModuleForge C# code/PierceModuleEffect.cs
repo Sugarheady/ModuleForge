@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace ModuleForge
 {
@@ -15,20 +16,61 @@ namespace ModuleForge
     [Serializable]
     public class PierceModuleEffect : ModuleEffect, IHasDescriptionForUnit
     {
-        public int pierceCap = 2;
-        public float falloff;
+        // FloatSeries so the cap can scale with the module's level, and FLOAT
+        // so a level can buy a FRACTION of a pierce: 1.5 pierces once always
+        // and twice half the time. The roll is per projectile, at Shoot.
+        public FloatSeries pierceCap;
+
+        // Also a series: "each level loses less damage per pierce" is a
+        // natural module, and it costs nothing now the pattern is here.
+        public FloatSeries falloff;
+
         public bool explodeOnLimit;
 
         private bool _registered;
-        private int _applied;
+        private float _applied;
         private Unit.Data _owner;
+
+        private int Level
+        {
+            get
+            {
+                int level = (base.Module != null) ? base.Module.Level : 1;
+                return (level < 1) ? 1 : level;
+            }
+        }
+
+        // Never negative: a series with a negative change would otherwise
+        // hand a nonsense cap to the roll at high levels.
+        private float CurrentCap
+        {
+            get
+            {
+                float v = pierceCap.GetElement(Level - 1);
+                return (v < 0f) ? 0f : v;
+            }
+        }
+
+        // Clamped to 0..1: it is used as (1 - falloff) damage multiplier, so
+        // a negative value would AMPLIFY damage per pierce and above 1 would
+        // go negative.
+        private float CurrentFalloff
+        {
+            get
+            {
+                float v = falloff.GetElement(Level - 1);
+                if (v < 0f) return 0f;
+                return (v > 1f) ? 1f : v;
+            }
+        }
 
         public override void OnInstalled(Unit.Data unit)
         {
             if (_registered) return;
             _owner = unit;
-            _applied = pierceCap;
-            ModuleForgeProjectile.AddPierce(unit, _applied, falloff, explodeOnLimit);
+            _applied = CurrentCap;
+            ModuleForgeProjectile.AddPierce(
+                unit, _applied, CurrentFalloff, explodeOnLimit);
             _registered = true;
         }
 
@@ -38,6 +80,23 @@ namespace ModuleForge
             ModuleForgeProjectile.RemovePierce(_owner ?? unit, _applied);
             _registered = false;
             _owner = null;
+            _applied = 0f;
+        }
+
+        // A BoosterCore placed beside this module raises Level without any
+        // install/uninstall, so re-sync what we contributed.
+        public override void OnRecalculateUnitStats(Unit.Data unit)
+        {
+            if (!_registered) return;
+
+            float now = CurrentCap;
+
+            if (now == _applied) return;
+
+            ModuleForgeProjectile.AdjustPierce(
+                _owner ?? unit, now - _applied);
+
+            _applied = now;
         }
 
         // Shows what THIS module contributes on its own card. When it's
@@ -55,27 +114,47 @@ namespace ModuleForge
 
             if (_registered)
             {
-                int total = ModuleForgeProjectile.PierceCapTotal;
-                int without = total - _applied;
-                if (without < 0) without = 0;
+                float total = ModuleForgeProjectile.PierceCapTotal;
+                float without = total - _applied;
+                if (without < 0f) without = 0f;
 
                 properties.Add(new DisplayableProperty(
-                    label, "+" + _applied, without.ToString(), total.ToString()));
+                    label, "+" + Fmt(_applied), Fmt(without), Fmt(total)));
             }
             else
             {
-                properties.Add(new DisplayableProperty(label, "+" + pierceCap));
+                properties.Add(new DisplayableProperty(
+                    label, "+" + Fmt(CurrentCap)));
             }
 
-            if (falloff > 0f)
+            // A fractional cap is worth spelling out - "+1.5 PIERCE" is not
+            // self-explanatory, and a player watching one bullet cannot tell
+            // a coin flip from a bug.
+            float frac = CurrentCap - (int)CurrentCap;
+
+            if (frac > 0f)
+            {
+                properties.Add(new DisplayableProperty(
+                    "Extra pierce chance",
+                    Mathf.RoundToInt(frac * 100f) + "%"));
+            }
+
+            float fall = CurrentFalloff;
+
+            if (fall > 0f)
             {
                 properties.Add(new DisplayableProperty(
                     "Damage per pierce",
-                    "-" + (falloff * 100f).ToString("0.#") + "%"));
+                    "-" + (fall * 100f).ToString("0.#") + "%"));
             }
 
             if (explodeOnLimit)
                 properties.Add(new DisplayableProperty("Explodes at the cap"));
+        }
+
+        private static string Fmt(float f)
+        {
+            return f.ToString("0.##");
         }
 
         public override ModuleEffect Clone()

@@ -193,6 +193,9 @@ namespace ModuleForge
                     "repeatable items).");
             }
 
+            // May the same module drop more than once in a run?
+            ApplyLootRepeat(module, root, fileName);
+
             Log.LogInfo(
                 "Built module '" + module.displayName + "' (" +
                 (isWeapon ? "weapon" : "ship") + ", " +
@@ -204,11 +207,246 @@ namespace ModuleForge
                 module = module,
                 inLoot = inLoot,
                 inShop = inShop,
+                lootGroups = ParseLootFrom(root, inLoot, fileName),
                 lootWeight = (float?)root["lootWeight"] ?? 10f,
                 shopPrice = shopPrice,
                 shopPriceIncrement = shopPriceIncrement,
                 shopUnlockLevel = (int?)root["shopUnlockLevel"] ?? 1
             };
+        }
+
+        // "lootFrom": which crate pools this module may drop from.
+        //
+        // Absent (or "all") keeps the original behaviour - every module pool -
+        // because that is what "source": "loot" has always meant here. A list
+        // picks specific ones. Returns null for "all".
+        private static string[] ParseLootFrom(
+            JObject root,
+            bool inLoot,
+            string fileName)
+        {
+            JToken token = root["lootFrom"];
+
+            if (token == null || token.Type == JTokenType.Null)
+                return null;
+
+            if (!inLoot)
+            {
+                Log.LogWarning(
+                    fileName + ": \"lootFrom\" was set but this module is not " +
+                    "loot-enabled, so it can never drop. Add " +
+                    "\"source\": \"loot\" (or \"both\") too.");
+            }
+
+            var names = new List<string>();
+
+            if (token.Type == JTokenType.String)
+            {
+                names.Add((string)token);
+            }
+            else if (token is JArray)
+            {
+                foreach (JToken t in (JArray)token)
+                {
+                    string s = (string)t;
+
+                    if (!string.IsNullOrEmpty(s))
+                        names.Add(s);
+                }
+            }
+            else
+            {
+                Log.LogWarning(
+                    fileName + ": \"lootFrom\" should be a name or a list of " +
+                    "names (" + ModuleLootPools.FriendlyList() + ") - ignored.");
+                return null;
+            }
+
+            var resolved = new List<string>();
+
+            foreach (string name in names)
+            {
+                string trimmed = (name ?? string.Empty).Trim();
+
+                if (trimmed.Equals("all", StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.Equals("any", StringComparison.OrdinalIgnoreCase))
+                {
+                    return null;   // every pool
+                }
+
+                string canonical;
+
+                if (!ModuleLootPools.TryResolve(trimmed, out canonical))
+                {
+                    Log.LogWarning(
+                        fileName + ": lootFrom '" + trimmed + "' is not a " +
+                        "known crate pool - use " +
+                        ModuleLootPools.FriendlyList() + ". Skipped.");
+                    continue;
+                }
+
+                if (!ModuleLootPools.IsSupported(canonical))
+                {
+                    Log.LogWarning(
+                        fileName + ": lootFrom '" + trimmed + "' resolves to '" +
+                        canonical + "', which the GAME never rolls and which " +
+                        "cannot be grafted on. A module in that pool could " +
+                        "never drop. Skipped.");
+                    continue;
+                }
+
+                // Money and Level 2 have no module roll of their own, so
+                // naming one makes the mod ADD one to that crate. Say so - it
+                // changes what a stock crate gives, which is worth knowing.
+                string table;
+
+                if (ModuleLootPools.NeedsGraft(canonical, out table))
+                {
+                    Log.LogInfo(
+                        fileName + ": '" + trimmed + "' has no module drop in " +
+                        "the base game, so a module roll will be ADDED to '" +
+                        table + "'. That crate keeps everything it normally " +
+                        "drops and gains a module on top." +
+                        (canonical == ModuleLootPools.Level2
+                            ? " This also revives the 5 stock regen/generator " +
+                              "modules in that pool, which the game otherwise " +
+                              "never rolls - your module competes with them."
+                            : " Only Forge content targeting \"money\" is in " +
+                              "that pool, so one of it always drops."));
+                }
+
+                if (!resolved.Contains(canonical))
+                    resolved.Add(canonical);
+            }
+
+            if (resolved.Count == 0)
+            {
+                Log.LogWarning(
+                    fileName + ": \"lootFrom\" left no usable pools, so this " +
+                    "module falls back to dropping from ALL of them.");
+                return null;
+            }
+
+            Log.LogInfo(
+                fileName + ": drops only from " +
+                string.Join(", ", resolved.ToArray()));
+
+            return resolved.ToArray();
+        }
+
+        // "lootRepeat": may the same module drop more than once in a run?
+        //
+        // The game's own anti-duplicate rule lives on the module:
+        // DroppabbleItemDistribution.GetWeight multiplies an entry's weight by
+        // repeatedDropChanceMultiplyer ONCE FOR EACH copy already dropped this
+        // run. 120 of ~145 stock modules set it to 0, so a module you already
+        // own drops to weight 0 and cannot appear again.
+        //
+        // Our module is a private clone of a shell, so changing this affects
+        // only this module - it can never make a stock one start repeating.
+        private static void ApplyLootRepeat(
+            ModuleData module,
+            JObject root,
+            string fileName)
+        {
+            JToken token = root["lootRepeat"];
+
+            if (module == null || token == null ||
+                token.Type == JTokenType.Null)
+            {
+                return;   // keep whatever the template shell had
+            }
+
+            float value;
+
+            if (token.Type == JTokenType.Boolean)
+            {
+                // true = full chance every time, false = the stock "once only".
+                value = (bool)token ? 1f : 0f;
+            }
+            else
+            {
+                // Strings are accepted deliberately: the builder page writes
+                // this field as text, and anyone hand-editing is just as likely
+                // to type "true" as true. Rejecting those would turn a
+                // reasonable file into a silent no-op.
+                if (!TryReadRepeat(token, out value))
+                {
+                    Log.LogWarning(
+                        fileName + ": \"lootRepeat\" should be true, false, or " +
+                        "a number from 0 to 1 - got '" + token +
+                        "', ignored.");
+                    return;
+                }
+
+                value = Mathf.Max(0f, value);
+
+                if (value > 1f)
+                {
+                    Log.LogWarning(
+                        fileName + ": \"lootRepeat\": " + value +
+                        " is above 1, which makes the module MORE likely to " +
+                        "drop again the more you already have. Legal, but " +
+                        "probably not what you meant - 1 keeps the chance " +
+                        "unchanged.");
+                }
+            }
+
+            module.repeatedDropChanceMultiplyer = value;
+
+            Log.LogInfo(
+                fileName + ": lootRepeat " + value +
+                (value <= 0f
+                    ? " (drops once per run, the stock behaviour)"
+                    : (value >= 1f
+                        ? " (can drop again at full chance)"
+                        : " (each copy you own makes the next x" + value +
+                          " as likely)")));
+        }
+
+        // Accepts a real number, or the words a person would actually type.
+        private static bool TryReadRepeat(JToken token, out float value)
+        {
+            value = 0f;
+
+            if (token.Type == JTokenType.Integer ||
+                token.Type == JTokenType.Float)
+            {
+                float? n = (float?)token;
+
+                if (!n.HasValue)
+                    return false;
+
+                value = n.Value;
+                return true;
+            }
+
+            string s = ((string)token ?? string.Empty).Trim();
+
+            if (s.Length == 0)
+                return false;
+
+            if (s.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("on", StringComparison.OrdinalIgnoreCase))
+            {
+                value = 1f;
+                return true;
+            }
+
+            if (s.Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("no", StringComparison.OrdinalIgnoreCase) ||
+                s.Equals("off", StringComparison.OrdinalIgnoreCase))
+            {
+                value = 0f;
+                return true;
+            }
+
+            return float.TryParse(
+                s,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out value);
         }
     }
 }

@@ -58,15 +58,18 @@ namespace ModuleForge
                         "ON"));
                 }
 
-                int pierce =
-                    (isProjectile ? ModuleForgeProjectile.PierceCapTotal : 0) +
+                // Float: a module's cap can be fractional (1.5 = a second
+                // pierce half the time), so rounding here would hide what
+                // the player actually has.
+                float pierce =
+                    (isProjectile ? ModuleForgeProjectile.PierceCapTotal : 0f) +
                     ForgeInterop.WeaponBakedPierce(td);
-                if (pierce > 0)
+                if (pierce > 0f)
                 {
                     results.Add(new DisplayableProperty(
                         TextFormatter.ColoredText(
                             TextFormatter.capsColor, "PIERCE"),
-                        pierce.ToString()));
+                        pierce.ToString("0.##")));
                 }
             }
             catch (Exception e)
