@@ -200,6 +200,19 @@ EFFECTS - SHIP (use with target ""ship"")
 { ""type"": ""DrainResourceEffect"", ""resource"": ""Fuel"", ""amount"": 0.5 }
     continuously drains a tank (negative = a gain)
 { ""type"": ""AddShieldEffect"", ""resource"": ""Caps"", ""amount"": 0.5 }
+
+{ ""type"": ""onKill"", ""resource"": ""Fuel"", ""amount"": 3,
+  ""clearBurn"": 2, ""buffDuration"": 2.5, ""buffFireRate"": 0.25,
+  ""buffMaxStacks"": 3, ""maxPerSecond"": 6 }
+    pays out when you KILL something. Works on EITHER grid, and which
+    kills count is decided by where you put it - no flag needed:
+       on the SHIP grid   -> any weapon's kills
+       in a WEAPON's grid -> only that weapon's kills
+    amount, chance, clearBurn and the two buff bonuses all take a
+    per-level series, so BoosterCores raise them. maxPerSecond is worth
+    setting: one explosion can kill a dozen enemies in a single frame.
+    ""asPickup"": true drops a pickup on the corpse instead of granting
+    it instantly.
     damage shield of an element; amount = fraction (0.5 = 50%)
 
 EFFECTS - WEAPON (use with target ""weapon"")

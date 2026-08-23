@@ -95,6 +95,12 @@
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(PunkManaged)\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
+    <!-- Needed only by ModuleForgeBuffHud's icon row (Image,
+         HorizontalLayoutGroup). The label text is set by reflection rather than
+         referencing Unity.TextMeshPro, to keep the reference surface small. -->
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(PunkManaged)\UnityEngine.UI.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.ParticleSystemModule">
       <HintPath>$(PunkManaged)\UnityEngine.ParticleSystemModule.dll</HintPath>
     </Reference>
@@ -104,6 +110,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ModuleForgePlugin.cs" />
+    <Compile Include="ModuleForgeBuffHud.cs" />
+    <Compile Include="ModuleForgeBuffHudPatch.cs" />
     <Compile Include="ModuleForgeRegistry.cs" />
     <Compile Include="ModuleBuilder.cs" />
     <Compile Include="EffectBuilder.cs" />
@@ -125,6 +133,10 @@
     <Compile Include="ModuleForgeProjectilePatch.cs" />
     <Compile Include="PhasingModuleEffect.cs" />
     <Compile Include="PierceModuleEffect.cs" />
+    <Compile Include="ModuleForgeKills.cs" />
+    <Compile Include="KillRewardEffect.cs" />
+    <Compile Include="ModuleForgeKillBuff.cs" />
+    <Compile Include="ModuleForgeKillPickup.cs" />
     <Compile Include="ForgeInterop.cs" />
     <Compile Include="StarterFiles.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

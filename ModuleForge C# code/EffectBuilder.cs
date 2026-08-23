@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using BepInEx.Logging;
 using Newtonsoft.Json.Linq;
+using UnityEngine;
 
 namespace ModuleForge
 {
@@ -67,6 +68,18 @@ namespace ModuleForge
                                 Series(entry["effectiveness"] ?? entry["amount"])
                         };
 
+                    // "killrewardeffect" is the CLASS NAME, and it is what the
+                    // builder page emits - every other case here lists its class
+                    // name for exactly that reason. Leaving it out meant the page
+                    // generated `"type": "KillRewardEffect"` and this mod rejected
+                    // its own output with "unknown effect type", so the module
+                    // built with zero effects and did nothing.
+                    case "killrewardeffect":
+                    case "killreward":
+                    case "onkill":
+                    case "resourceonkill":
+                        return BuildKillReward(entry, fileName);
+
                     case "modifyweaponproperty":
                     case "weaponstat":
                         return BuildWeaponProperty(entry, fileName);
@@ -76,7 +89,7 @@ namespace ModuleForge
                         return new IncreaseExplosionRadiusEffect
                         {
                             increaseAmount =
-                                (float?)entry["increaseAmount"] ?? 1f
+                                Flat(entry["increaseAmount"], 1f)
                         };
 
                     case "addimpactexplosioneffect":
@@ -89,7 +102,7 @@ namespace ModuleForge
                         {
                             amount = Series(entry["amount"]),
                             costPerProjectile =
-                                (float?)entry["costPerProjectile"] ?? 0f,
+                                Flat(entry["costPerProjectile"], 0f),
                             costResource =
                                 ForgeAssets.ResolveResource(
                                     (string)entry["costResource"])
@@ -132,8 +145,8 @@ namespace ModuleForge
                                 entry["falloff"] ??
                                 entry["pierceDamageFalloff"]),
                             explodeOnLimit =
-                                (bool?)entry["explodeOnLimit"] ??
-                                (bool?)entry["pierceExplodeOnLimit"] ?? false
+                                FlatBool(entry["explodeOnLimit"] ??
+                                entry["pierceExplodeOnLimit"], false)
                         };
 
                     case "addexplosioneffect":
@@ -145,16 +158,16 @@ namespace ModuleForge
                                     (string)entry["damageType"]),
                             damageAmount = Series(entry["damageAmount"]),
                             costPerProjectile =
-                                (float?)entry["costPerProjectile"] ?? 0f,
+                                Flat(entry["costPerProjectile"], 0f),
                             costResource =
                                 ForgeAssets.ResolveResource(
                                     (string)entry["costResource"]),
                             addImpactExplosion =
-                                (bool?)entry["addImpactExplosion"] ?? true,
+                                FlatBool(entry["addImpactExplosion"], true),
                             addTimeoutExplosion =
-                                (bool?)entry["addTimeoutExplosion"] ?? false,
+                                FlatBool(entry["addTimeoutExplosion"], false),
                             explosionRadiusIncrement =
-                                (float?)entry["explosionRadiusIncrement"] ?? 0f,
+                                Flat(entry["explosionRadiusIncrement"], 0f),
                             burn = Series(entry["burn"])
                         };
 
@@ -164,12 +177,12 @@ namespace ModuleForge
                         return new AddDischargeEffect
                         {
                             chainLengthIncrement =
-                                (int?)entry["chainLengthIncrement"] ?? 1,
+                                FlatInt(entry["chainLengthIncrement"], 1),
                             damageIncrement = Series(entry["damageIncrement"]),
-                            impact = (bool?)entry["impact"] ?? true,
-                            timeout = (bool?)entry["timeout"] ?? false,
+                            impact = FlatBool(entry["impact"], true),
+                            timeout = FlatBool(entry["timeout"], false),
                             costPerProjectile =
-                                (int?)entry["costPerProjectile"] ?? 0,
+                                FlatInt(entry["costPerProjectile"], 0),
                             costResource =
                                 ForgeAssets.ResolveResource(
                                     (string)entry["costResource"])
@@ -191,6 +204,81 @@ namespace ModuleForge
             }
         }
 
+        // onKill - pays out when the ship kills something.
+        //
+        // Nothing here needs a "scope" parameter: whether this counts every
+        // kill or only one weapon's is decided by which GRID the module ends up
+        // in, and the game tells the effect that for free. See the note on
+        // KillRewardEffect.
+        private static ModuleEffect BuildKillReward(
+            JObject entry, string fileName)
+        {
+            var resource = ForgeAssets.ResolveResource((string)entry["resource"]);
+
+            JToken amountTok = entry["amount"] ?? entry["resourceAmount"];
+
+            float burn = Flat(entry["clearBurn"], 0f);
+            float fire = Flat(entry["buffFireRate"], 0f);
+            float dmg = Flat(entry["buffDamage"], 0f);
+            float dur = Flat(entry["buffDuration"], 0f);
+
+            var effect = new KillRewardEffect
+            {
+                resource = resource,
+                amount = SeriesOr(amountTok, 0f),
+                asPickup = FlatBool(entry["asPickup"] ?? entry["drop"], false),
+                chance = SeriesOr(entry["chance"], 1f),
+                maxPerSecond = Flat(entry["maxPerSecond"], 0f),
+                clearBurn = SeriesOr(entry["clearBurn"], 0f),
+                buffDuration = dur,
+                buffFireRate = SeriesOr(entry["buffFireRate"], 0f),
+                buffDamage = SeriesOr(entry["buffDamage"], 0f),
+                buffMaxStacks = FlatInt(entry["buffMaxStacks"], 1),
+                buffIndicator = (string)entry["buffIndicator"] ?? ""
+            };
+
+            // A payout with no resource named is the commonest mistake here,
+            // and it is silent otherwise - the effect installs and simply never
+            // gives anything.
+            bool wantsResource = amountTok != null;
+
+            if (wantsResource && resource == null)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill has an \"amount\" but no valid " +
+                    "\"resource\", so there is nothing to grant. Name a " +
+                    "resource, or drop the amount and use \"clearBurn\" / the " +
+                    "buff instead.");
+            }
+
+            if ((fire > 0f || dmg > 0f) && dur <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill sets \"buffFireRate\" or " +
+                    "\"buffDamage\" but no \"buffDuration\", so the buff " +
+                    "would last no time at all and has been ignored. Give it a " +
+                    "duration in seconds.");
+            }
+
+            if (dur > 0f && fire <= 0f && dmg <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill has a \"buffDuration\" but neither " +
+                    "\"buffFireRate\" nor \"buffDamage\", so the buff does " +
+                    "nothing.");
+            }
+
+            if (!wantsResource && burn <= 0f && dur <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill pays out nothing at all. Set at least " +
+                    "one of \"amount\" (with a \"resource\"), " +
+                    "\"clearBurn\", or a buff.");
+            }
+
+            return effect;
+        }
+
         private static Resource Res(JObject entry, string fileName)
         {
             var r = ForgeAssets.ResolveResource((string)entry["resource"]);
@@ -207,20 +295,17 @@ namespace ModuleForge
             JObject entry, string fileName)
         {
             bool rgb =
-                (bool?)entry["rgb"] ??
-                (bool?)entry["rainbow"] ?? false;
+                FlatBool(entry["rgb"] ?? entry["rainbow"], false);
 
             var effect = new BurnColorEffect
             {
                 rgb = rgb,
                 rgbSpeed =
-                    (float?)entry["rgbSpeed"] ??
-                    (float?)entry["speed"] ?? 0.5f,
-                saturation = (float?)entry["saturation"] ?? 1f,
-                brightness = (float?)entry["brightness"] ?? 1f,
+                    Flat(entry["rgbSpeed"] ?? entry["speed"], 0.5f),
+                saturation = Flat(entry["saturation"], 1f),
+                brightness = Flat(entry["brightness"], 1f),
                 includeTerrain =
-                    (bool?)entry["includeTerrain"] ??
-                    (bool?)entry["terrain"] ?? false
+                    FlatBool(entry["includeTerrain"] ?? entry["terrain"], false)
             };
 
             if (rgb)
@@ -339,7 +424,7 @@ namespace ModuleForge
             // makes it worse rather than better.
             if (operation == ModifyWeaponProperty.Operation.Multiply)
             {
-                float v = (float?)(entry["value"] ?? entry["amount"]) ?? 0f;
+                float v = Flat(entry["value"] ?? entry["amount"], 0f);
 
                 if (v == 0f)
                 {
@@ -361,6 +446,84 @@ namespace ModuleForge
         }
 
         // Series() with a non-zero default for an absent key. Series(null)
+        // A scalar read that CANNOT be broken by a per-level value.
+        //
+        // WHY THIS EXISTS, because it cost five failed tests in one round and
+        // the cause was three lines that only computed a WARNING:
+        //
+        //     float burn = (float?)entry["clearBurn"] ?? 0f;
+        //
+        // Every series-capable param can arrive as either a plain number or a
+        // `{baseValue, increaseMethod, change}` object - the builder page emits
+        // the object the moment you fill in a "per level" box. Casting that
+        // object to float? throws `Can not convert Object to Single`, the whole
+        // effect is abandoned, and the module builds with ZERO effects: no
+        // payout, no pickup, no buff, and no card line either (an effect that
+        // does not exist has nothing to describe). Four onKill modules failed
+        // this way while their real assignments - all correctly using Series()
+        // - were never reached. The same latent crash sat in
+        // ModifyWeaponProperty's Multiply warning.
+        //
+        // So: no raw `(float?)entry[...]` on anything a page can make a series.
+        // Route every scalar through here, which reads a number as itself and a
+        // series as its baseValue. Cheaper than remembering which params are
+        // series-capable, and this is the second round in a row lost to the mod
+        // rejecting its own builder page's output.
+        private static float Flat(JToken token, float fallback)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+                return fallback;
+
+            if (token.Type == JTokenType.Object)
+                return (float?)((JObject)token)["baseValue"] ?? fallback;
+
+            if (token.Type == JTokenType.Array)
+                return fallback;
+
+            try
+            {
+                return (float?)token ?? fallback;
+            }
+            catch (Exception)
+            {
+                // A string, a bool, anything unexpected. The real assignment
+                // through Series() reports its own problem; a warning helper
+                // must never be the thing that kills the effect.
+                return fallback;
+            }
+        }
+
+        private static int FlatInt(JToken token, int fallback)
+        {
+            return Mathf.RoundToInt(Flat(token, fallback));
+        }
+
+        private static bool FlatBool(JToken token, bool fallback)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+                return fallback;
+
+            if (token.Type == JTokenType.Boolean)
+                return (bool)token;
+
+            // A number or a series object standing in for a flag - 0 is false.
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float ||
+                token.Type == JTokenType.Object)
+            {
+                return Flat(token, fallback ? 1f : 0f) != 0f;
+            }
+
+            if (token.Type == JTokenType.String)
+            {
+                bool parsed;
+
+                if (bool.TryParse((string)token, out parsed))
+                    return parsed;
+            }
+
+            return fallback;
+        }
+
         // gives 0, which is right for an "amount" but wrong for something
         // like pierceCap whose historical default is 2.
         private static FloatSeries SeriesOr(JToken token, float fallback)

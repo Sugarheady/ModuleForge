@@ -39,6 +39,28 @@ namespace ModuleForge
                 return null;
             }
 
+            // SPACES INSIDE A NAME ARE FINE - nothing splits it, and it is
+            // compared whole everywhere it is used. Whitespace at the EDGES is
+            // not: it bakes into the module's asset name and its id while being
+            // completely invisible in an editor.
+            if (name != name.Trim())
+            {
+                Log.LogWarning(
+                    fileName + ": \"name\" had whitespace at the start or end " +
+                    "('" + name + "'), which is invisible in an editor. " +
+                    "Trimmed to '" + name.Trim() + "'. Spaces INSIDE a name " +
+                    "are fine and are left alone.");
+
+                name = name.Trim();
+            }
+
+            if (name.Length == 0)
+            {
+                Log.LogError(
+                    fileName + ": \"name\" is nothing but whitespace.");
+                return null;
+            }
+
             if (alreadyBuilt != null && alreadyBuilt.Contains(name))
                 return null;
 
