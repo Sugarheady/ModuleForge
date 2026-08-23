@@ -66,6 +66,85 @@ is not. Keep that line.
 - `Module`'s constructor rolls `PowerLevel = Random.Range(powerLevel.Min, Max)` **per instance**, so
   two drops of the same module differ, and `ModulePickup` shows the rolled value on the ground.
 
+### Kills, and ship-vs-weapon scope for free
+
+`Unit.RegisterKill` fires a **public** `KilledAnotherUnit` event and is called from **only three
+places** (`DamagableResource.ProjectileCollided` / `OnHitByHitscanWeapon` / `OnExplosion`). Nothing
+else credits a kill — not `Die()`, not burn ticks, and not mod-side damage. `ModuleForgeKills` tracks
+the *weapon* too, which the game never records: stamped at `Shoot` for projectiles, read off the beam
+for hitscan, and taken from the owning projectile for explosions.
+
+> **An effect can tell which grid it is in without a flag.** `WeaponFactory.Create` walks only the
+> modules in a **weapon's** cluster when it applies `IWeaponModifier`. So an effect whose `Modify` is
+> called is in a weapon grid (and can capture *which* weapon); one whose `Modify` never comes is on the
+> ship. `KillRewardEffect` uses exactly that to make "only this weapon's kills" versus "any weapon's
+> kills" free. Reuse the trick rather than adding a target field.
+
+Two traps found building it:
+
+- **`FloatSeries` is a STRUCT**, so `series == null` does not even compile. An unspecified one is
+  all-zero, which means a non-zero default has to come from the builder — `EffectBuilder.SeriesOr`.
+- **`Pickup` has `Start`, not `Awake`**, and `ResourcePickup` declares no lifecycle method at all.
+  Patching `ResourcePickup.Awake` makes Harmony **throw at `PatchAll`** and takes the whole mod down.
+  Patch `Pickup.Start` and cast. `ResourcePickup.resource` / `amount` / `pickupSfx` are all public, so
+  cloning one the game already spawned is the cheapest way to drop a custom pickup.
+
+### A warning-only read can kill the whole effect
+
+**Validation code must be the most defensive code in the function, not the least.** Three lines in
+`BuildKillReward` read `clearBurn` / `buffFireRate` / `buffDamage` with a plain `(float?)` cast
+*purely to decide whether to log a warning*. Every series-capable param can arrive as
+`{baseValue, increaseMethod, change}` — the builder page emits that object the moment a "per level"
+box is filled — and casting it to `float?` throws `Can not convert Object to Single`. The effect was
+abandoned, the module built with **zero effects**, and so there was no payout, no pickup, no buff
+**and no card line either**. It read as four separate bugs and cost five failed tests, while the real
+assignments four lines below were all correct and never ran.
+
+Every scalar read here now goes through **`Flat` / `FlatInt` / `FlatBool`**, which take a number as
+itself and a series as its `baseValue` and fall back on anything unexpected. Not just the three that
+broke — the identical latent crash was sitting in `ModifyWeaponProperty`'s Multiply warning.
+
+**This is the second round lost to the mod rejecting JSON its own builder page wrote** (the first was
+the missing `killrewardeffect` class name). After touching either side, check that no shape the page
+can emit reaches a cast that throws — *including in code that only logs*. Series-capable params as of
+2026-08-20: amount, buffDamage, buffFireRate, burn, chance, clearBurn, damageAmount, damageIncrement,
+falloff, pierceCap, ticksPerSecond, value.
+
+### Plugin load order — this mod loads FIRST
+
+BepInEx loads Module Forge **before** Weapon Forge, so at `Awake` time Weapon Forge's types genuinely
+do not exist yet. Any cross-mod check has to be **deferred** (the first `ShipHud.AssignShip` bind is a
+good point), and it must look the type up **silently** — `AccessTools.TypeByName` logs a warning when
+the type is absent, and "the other mod is not installed" is a completely normal state. Scan
+`AppDomain.CurrentDomain.GetAssemblies()` instead.
+
+### The status feed is not an upsert
+
+`ShipLogOutput.Log(id, ...)` looks like "replace the line with this id". **It is not, and the idiom
+`Clear(id); Log(id, ...)` floods the screen.** Three parts:
+
+- **`Log` always APPENDS** a new `ShipLogEntry`. There is no replace-by-id anywhere in the class.
+- **`ShipLogDisplay.Show` then `Instantiate`s a fresh `LogEntry` row** *and* plays `newMessageSfx`.
+  Every log call is a new row and a new chirp.
+- **`Clear` does not remove the row promptly** — it fires `LogRemoved` → `LogEntry.Hide()`, which is
+  **`async void`**: a close animation, destroyed later.
+
+So any text that changes often (a stack count, a seconds countdown) stacks rows on top of ones still
+fading out. That is exactly how the buff indicator came to cover the left of the screen and chirp
+continuously in a group fight.
+
+**Rewrite the live row's text in place instead.** `ShipHud.logDisplay` is public; only
+`ShipLogDisplay.logEntries` (`Dictionary<ShipLogEntry, LogEntry>`) is private. `ShipLogEntry` is a
+**class**, so it keys by reference — and `Log` does not hand it back, so subscribe to
+`LogOutput.LogAdded` and cache `id → ShipLogEntry` yourself. Wrap the text in
+`<uppercase>…</uppercase>`, which is what `LogEntry.Display` does. Keep a hard line cap anyway: the
+status area sits beside the ammo / fuel / health readouts.
+
+**Related UI trap, same feature:** a borrowed prefab brings its own `RectTransform` size, and a
+`HorizontalLayoutGroup` with `childControlWidth/Height` **false** (the default) ignores a child's
+`LayoutElement` entirely — so there is no sizing at all, not merely bad sizing. Set `childControl*`
+true *and* add a `LayoutElement`.
+
 ### The level-boost system (green crates)
 
 Green crates always drop one `Module BoosterCore` as a **fixed** item, not a weighted roll. Boosting
@@ -147,6 +226,25 @@ is not an `int`. Use a plain `FieldInfo` when unsure.
 One self-contained page, no build step, no network. Fields carry a **`data-path`** folded into nested
 JSON by `deepSet`.
 
+> **The effect list filters on `group === target`**, so an effect valid on *both* grids needs the
+> `"both"` group and the `fitsTarget` helper — a group value the filter does not recognise puts the
+> effect in **neither** dropdown, silently. That is how `KillRewardEffect` first shipped.
+
+> **Every `case` in `EffectBuilder`'s switch must include the effect's own CLASS NAME, lowercased.**
+> The page emits `"type": "KillRewardEffect"` — the class name — and the switch accepted only
+> `killreward` / `onkill` / `resourceonkill`, so **the mod rejected JSON its own builder page had
+> written**: `unknown effect type 'KillRewardEffect' - skipped`, module built with zero effects, and
+> (because an effect that does not exist has nothing to describe) **no stats on its card either**, which
+> made it look like two separate bugs. Every other case already listed its class name; this was the one
+> omission. After adding or renaming an effect, diff the page's keys against the switch —
+> page: `^\s*"([A-Za-z]+)":\s*\{\s*group:` in `Module Builder.html`; code: `case "([a-z0-9]+)":` in
+> `EffectBuilder.cs`. All 15 line up as of 2026-08-18.
+
+> **A new stat is not finished until it shows on the module card in game** — a standing request from
+> the mod's author, and a fair one: the card is the only place a player can learn what a module does.
+> That makes four updates, not three: C#, page, txt, **and** a `DisplayableProperty` line from
+> `GetPropertyList`.
+
 > **A `data-path` that is a prefix of another one throws**, and the exception escapes `build()`, so the
 > page silently emits *nothing* and drops every field after it. Sweep all paths for prefix collisions
 > after any change.
@@ -168,6 +266,16 @@ The two mods cooperate but must stay independently buildable and runnable:
 - This mod **borrows Weapon Forge's audio pipeline** when present, so there is one `sounds` folder and
   one set of names across both mods. Don't duplicate the decoder here. Same for the `sprites` folder
   behind custom icons.
+- **The buff indicator is duplicated too, for the same reason as loot.**
+  `ModuleForgeBuffHud` is a deliberate copy of `ForgeBuffHud` — a display layer is not a decoder worth
+  a dependency, and each mod must indicate its own buffs with the other absent. They coordinate through
+  **two** shared constants: the icon-row GameObject name `Forge Buff Indicators` (found by
+  `parent.Find`, so whichever mod builds it first wins and the other joins it — one row, not two), and
+  **disjoint log-id blocks** — Weapon Forge owns 9100–9159, Module Forge 9200–9259, and the game itself
+  uses 0–5. Disjoint ids are what let a weapon buffed by both sources show two lines, one per source,
+  instead of the mods clearing each other's entries. Settings are deliberately *independent* (either
+  mod alone must be configurable); `WarnOnIndicatorMismatch` logs once at startup if the two configs
+  disagree, read by type name only.
 - **Loot is the opposite call: duplicated, not borrowed.** `ModuleLootPools` is a deliberate copy of
   `ForgeLootPools` — a table of constant asset names isn't worth a dependency, and each mod must drop
   loot with the other absent. The two coordinate through **one shared string**: the created Money pool

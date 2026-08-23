@@ -46,7 +46,11 @@ Errors are logged to <game>\BepInEx\LogOutput.log (search
 ----------------------------------------------------------------
 
 {
-  "name": "GlassCannon",        <- REQUIRED, unique id, no spaces
+  "name": "GlassCannon",        <- REQUIRED, unique id. Spaces are
+                                   fine ("Glass Cannon" works); just
+                                   do not reuse a name the game has,
+                                   and do not leave a space at the
+                                   start or end.
   "displayName": "GLASS CANNON",
   "description": "...",
   "target": "weapon",           <- "ship" or "weapon" (default ship)
@@ -83,6 +87,86 @@ SHIP effects (use with "target": "ship"):
   ResourceAutoChargeEffect{ resource, amount }        regen per second
   DrainResourceEffect     { resource, amount }        drain/sec (neg=gain)
   AddShieldEffect         { resource, amount }        shield; 0.5 = 50%
+
+EITHER GRID - works with "target": "ship" OR "weapon":
+  KillRewardEffect (alias "onKill")
+     { resource, amount, asPickup, chance, maxPerSecond, clearBurn,
+       buffDuration, buffFireRate, buffDamage, buffMaxStacks }
+
+  Pays out when the ship KILLS something.
+
+  WHOSE KILLS COUNT IS DECIDED BY WHICH GRID YOU PUT IT IN, and you do
+  not set a flag for it:
+     on the SHIP grid    -> any weapon's kills pay out
+     in a WEAPON's grid  -> only THAT weapon's kills pay out
+
+  That falls out of the game's own architecture rather than being
+  invented: WeaponFactory only walks the modules in a WEAPON's cluster
+  when it applies IWeaponModifier, so a ship-grid module never gets that
+  call and a weapon-grid one does. The module's card says which it ended
+  up as ("Counts kills by: this weapon" / "any weapon").
+
+  THE GAME CREDITS KILLS FROM ONLY THREE PLACES - a projectile hit, a
+  beam hit and an explosion - and records only which UNIT killed, never
+  which weapon, so the weapon is tracked by this mod. Nothing else
+  credits a kill at all, not even Die() itself.
+
+    resource / amount   which tank, and how much per kill. amount takes
+               a per-level series, so BoosterCores raise the payout.
+               Clamped to the tank's capacity - it cannot overfill.
+    asPickup   drop a real pickup on the corpse to fly through instead
+               of granting it instantly. Missable, and more visible.
+    chance     0-1, and also a series - so a level can buy RELIABILITY
+               rather than size. Rolled before the cap, so a failed roll
+               does not consume it.
+    maxPerSecond
+               cap on how much RESOURCE this grants per second, 0 =
+               uncapped. The case this exists for: one explosion can
+               kill a dozen enemies in the same frame.
+               CHANGED 2026-08-18. It used to count PAYOUTS per second,
+               which is not how it reads next to "amount" - "amount": 3
+               with "maxPerSecond": 4 obviously means 4 fuel a second,
+               not 4 kills a second. RETUNE EXISTING FILES. A module
+               that grants no resource (buff-only, burn-only) still
+               counts payouts, so it keeps a limiter either way.
+    clearBurn  burn level removed from your own ship per kill - the only
+               payout that can save you mid-fire. The ship sheds burn at
+               5/second by itself.
+    buffIndicator
+               SHOWS THE BUFF ON SCREEN while it lasts, wearing this
+               module's own icon and colour. "feed" (the game's own
+               status line - the one that says FUEL LOW), "icons" (a row
+               beside the minion counter), "both", or "off". Leave it
+               out to follow the global default.
+
+               The feed is not a hack: the game already uses that line
+               for PERSISTENT status, not just messages. "Fuel low" is
+               logged with no duration, coloured and flashing, then
+               cleared when it stops applying - the same shape as a
+               buff.
+
+               The global default and the label live in
+               BepInEx/config/com.sugarheady.moduleforge.cfg:
+                 Style   off / feed / icons / both
+                 Label   effect (FIRE RATE +30%) / seconds / stacks /
+                         icon
+               Weapon Forge keeps its OWN copy of these settings so
+               either mod works alone. If both are installed and the two
+               disagree, the log says so once at startup - module buffs
+               and weapon buffs will simply look different on screen.
+               With both installed you get ONE icon row, not two, and a
+               weapon buffed from both sources shows TWO lines, one per
+               source, each wearing its own icon - so you can see which
+               module is pulling its weight.
+
+               This one shows on the module card like every other
+               setting.
+    buffDuration / buffFireRate / buffDamage / buffMaxStacks
+               a timed weapon buff. The bonuses are FRACTIONS (0.25 =
+               +25%) and need a duration or they do nothing. On the SHIP
+               grid the buff applies to every weapon you are holding; in
+               a weapon's grid, only to that weapon. maxStacks 1 means
+               each kill refreshes rather than stacks.
 
 WEAPON effects (use with "target": "weapon"):
   ModifyWeaponProperty { targetProperty, operation, deltaCalculationMode,
@@ -249,7 +333,44 @@ Note: each shop tier rolls once as you pass it - to see a new shop
 module, start a fresh run.
 
 ----------------------------------------------------------------
- 8. EXAMPLES
+ 8. BUFF INDICATOR - WHERE THE SETTINGS ARE
+----------------------------------------------------------------
+
+THE INDICATOR IS OFF BY DEFAULT, globally, on purpose. The game's
+status area sits right next to the ammo / fuel / health readouts, so
+anything drawn there is an overlay on top of the things you actually
+need to see. Switching it on is a CONFIG FILE edit, not a JSON one:
+
+  BepInEx\config\com.sugarheady.moduleforge.cfg
+  section [Buff indicator]
+
+  Style            "off" (DEFAULT) - nothing is drawn
+                   "feed"  - the game's own status line, the one that
+                             says "Fuel low"
+                   "icons" - a row of icons beside the minion counter
+                   "both"
+  Label            "effect", "seconds", "stacks", or "icon"
+  MaxFeedLines     the most status lines this mod may occupy at once
+                   (default 3). A hard backstop, so the feed can never
+                   grow over the HUD however many buffs are running.
+  IconSize         side of one icon in pixels (default 28). The widget
+                   is BORROWED from the minion counter and arrives at
+                   whatever size that prefab was authored with, so this
+                   is the number that decides how big it looks.
+  ShowTimedStates  also report ongoing states
+  ShowDebuffs      also report things working against you
+
+WEAPON FORGE HAS ITS OWN IDENTICAL BLOCK in
+com.sugarheady.weaponforge.cfg. The two are deliberately independent so
+either mod works with the other absent - which does mean that if you
+set only one, module buffs and weapon buffs will look different. The
+mods log a warning once at startup if the two disagree.
+
+An effect's own "buffIndicator" key picks the ICON. It does nothing at
+all while Style is "off".
+
+----------------------------------------------------------------
+ 9. EXAMPLES
 ----------------------------------------------------------------
 
 Weapon module - glass cannon (more shots, slower fire):
@@ -276,3 +397,4 @@ Ship module - tanky but leaky:
   }
 
 ================================================================
+

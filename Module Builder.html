@@ -249,6 +249,42 @@
   </section>
 
   <section>
+    <h2>Buff indicator &mdash; where the settings are</h2>
+    <div class="grid">
+      <label class="field"><span>read this before using buffIndicator</span>
+        <em><b>The indicator is OFF by default</b>, globally, on purpose &mdash;
+            the status area sits right next to the ammo / fuel / health
+            readouts, so it is an overlay on top of the things you actually need
+            to see. Turning it on is a <b>config file</b> edit, not a JSON one:
+            <br><br>
+            <code>BepInEx\config\com.sugarheady.moduleforge.cfg</code>,
+            section <code>[Buff indicator]</code>:
+            <br><br>
+            &bull; <b>Style</b> &mdash; <code>off</code> (default),
+            <code>feed</code> (the game's own status line, where "Fuel low"
+            appears), <code>icons</code> (a row beside the minion counter), or
+            <code>both</code>.<br>
+            &bull; <b>Label</b> &mdash; <code>effect</code>,
+            <code>seconds</code>, <code>stacks</code>, or <code>icon</code>.<br>
+            &bull; <b>MaxFeedLines</b> &mdash; the most status lines this mod may
+            occupy at once (default 3). A hard backstop so the feed can never
+            grow over the HUD.<br>
+            &bull; <b>IconSize</b> &mdash; side of one icon in pixels (default
+            28). The widget is borrowed from the minion counter and brings its
+            own authored size, so this is what decides how big it looks.<br>
+            &bull; <b>ShowTimedStates</b> / <b>ShowDebuffs</b>.
+            <br><br>
+            <b>Weapon Forge has its own identical block</b> in
+            <code>com.sugarheady.weaponforge.cfg</code> &mdash; the two are
+            deliberately independent so either mod works alone. Set both the
+            same or module buffs and weapon buffs will look different.
+            <br><br>
+            An effect's own <code>"buffIndicator"</code> key picks the ICON and
+            only matters once Style is not <code>off</code>.</em></label>
+    </div>
+  </section>
+
+  <section>
     <h2>Effects</h2>
     <p class="field"><em id="eff-hint">Effects for the selected target. Mix positive and
       negative freely (e.g. +1 projectile and -20% fire rate).</em></p>
@@ -277,7 +313,11 @@
 (function(){
   "use strict";
 
-  var RESOURCES = ["Health","Stamina","Caps","Electron","Fuel","Gel","Tech"];
+  // "Stamina" and "Gel" are the friendly names the game shows for White and
+  // Purple, and ForgeAssets maps them - they are not mistakes. Money is a
+  // real option for a PAYOUT (the ship carries the run-wide shared tank);
+  // it is only draining it as ammo that misbehaves.
+  var RESOURCES = ["Health","Stamina","Caps","Electron","Fuel","Gel","Tech","Money"];
 
   // Effect catalog: key -> { group, label, params:[{k,t,ph,opts,def}] }
   // t: number | int | resource | bool | select
@@ -294,6 +334,18 @@
     "AddShieldEffect": { group:"ship", label:"Shield (fraction, 0.5 = 50%)",
       params:[ {k:"resource",t:"resource",d:"which damage type it shields against"},
         {k:"amount",t:"number",s:true,ph:"0.5",d:"fraction of that damage blocked - 0.5 = 50%"} ] },
+    "KillRewardEffect": { group:"both", label:"On kill (pays you for kills)",
+      params:[ {k:"resource",t:"resource",d:"which tank the payout goes into - leave blank if you only want a buff or burn relief"},
+        {k:"amount",t:"number",s:true,ph:"2",d:"units granted per kill"},
+        {k:"asPickup",t:"bool",d:"drop a pickup on the corpse to fly through, instead of granting it instantly"},
+        {k:"chance",t:"number",s:true,ph:"1",d:"0-1 chance to trigger. Per level so a level can buy reliability instead of size"},
+        {k:"maxPerSecond",t:"number",ph:"0",d:"cap on how much RESOURCE this grants per second. 0 = uncapped. One explosion can kill a dozen enemies at once, which is what this is for. Changed 2026-08-18: it used to count payouts, so \"amount 3, maxPerSecond 4\" meant 4 kills a second rather than 4 fuel a second - retune existing files. A module granting no resource still counts payouts"},
+        {k:"clearBurn",t:"number",s:true,ph:"0",d:"burn level removed from YOUR ship per kill - the only payout that can save you mid-fire"},
+        {k:"buffDuration",t:"number",ph:"0",d:"seconds the buff below lasts. 0 = no buff"},
+        {k:"buffFireRate",t:"number",s:true,ph:"0",d:"fire rate bonus as a fraction - 0.25 = +25%"},
+        {k:"buffDamage",t:"number",s:true,ph:"0",d:"damage bonus as a fraction"},
+        {k:"buffMaxStacks",t:"number",ph:"1",d:"how many kills can stack the buff. 1 = each kill just refreshes it"},
+        {k:"buffIndicator",t:"text",ph:"",d:"SHOWS THE BUFF ON SCREEN while it lasts, wearing this module's own icon and colour. \"feed\" = the game's own status line (the one that says FUEL LOW), \"icons\" = a row beside the minion counter, \"both\", or \"off\". Leave blank to follow the global default in BepInEx/config/com.sugarheady.moduleforge.cfg, where you also pick what the label reads. It appears on the module card too"} ] },
     "ModifyWeaponProperty": { group:"weapon", label:"Weapon stat",
       params:[
         {k:"targetProperty",t:"select",opts:["FireRate","BurstSize","BurstDelay",
@@ -360,10 +412,19 @@
     return h;
   }
 
+  // "both" means the effect is valid on either grid. Without this the filter
+  // was a strict equality against "ship"/"weapon", so a group the list did not
+  // recognise showed up in NEITHER dropdown - silently, which is the worst way
+  // for it to fail.
+  function fitsTarget(key,target){
+    var g=EFFECTS[key].group;
+    return g===target || g==="both";
+  }
+
   function typeOptionsHtml(target){
     var h='';
     for(var key in EFFECTS){
-      if(EFFECTS[key].group===target)
+      if(fitsTarget(key,target))
         h+='<option value="'+key+'">'+EFFECTS[key].label+'</option>';
     }
     return h;
@@ -444,7 +505,7 @@
       var typeSel=rows[i].querySelector(".eff-type");
       var prev=typeSel.value;
       typeSel.innerHTML=typeOptionsHtml(target);
-      var stillValid=EFFECTS[prev] && EFFECTS[prev].group===target;
+      var stillValid=EFFECTS[prev] && fitsTarget(prev,target);
       typeSel.value=stillValid?prev:typeSel.options[0].value;
       renderParams(rows[i].querySelector(".eff-params"), typeSel.value);
     }
@@ -491,7 +552,15 @@
     var warn=[];
     var name=nameInput.value.trim();
     if(!name) warn.push("⚠ \"name\" is required.");
-    if(/\s/.test(name)) warn.push("⚠ \"name\" should not contain spaces.");
+    // Spaces inside a name are FINE, and the warning that used to sit here was
+    // wrong. Nothing splits the name - it becomes an asset name and a module
+    // id, both compared whole - so "Glass Cannon" works.
+    //
+    // No stock-name collision check here, unlike the weapon builder: that page
+    // offers a list of the game's own weapons to compare against, and this one
+    // builds from a fixed shell, so there is no list to check. The mod trims
+    // edge whitespace and says so at load, which is the part that actually
+    // bites.
     out.name=name||"MyModule";
 
     var fields=document.querySelectorAll("#form [data-path]");
