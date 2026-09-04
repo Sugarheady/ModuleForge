@@ -33,6 +33,16 @@ namespace ModuleForge
                     // Both mods are certainly loaded by now, which is not true
                     // at plugin-load time - this mod loads FIRST.
                     ModuleForgePlugin.CheckIndicatorMismatch();
+
+                    // Resolve who owns CRIT here too, for the same reason and
+                    // one of its own: that check is lazy, so without this the
+                    // "who owns it" line would not appear until something in
+                    // the world took damage - which makes it useless as the
+                    // first thing to look for in a log. It also gets the
+                    // reflection out of the way before combat rather than on
+                    // the first hit. Reading the property is the whole call.
+                    bool ignored = ModuleForgeCritCompat.OwnsPatches;
+                    bool ignoredToo = ModuleForgeLeechCompat.OwnsPatches;
                 }
                 catch (Exception e)
                 {

@@ -186,6 +186,24 @@ namespace ModuleForge
             }
 
             float baseInterval = box.baseInterval;
+
+            // A FIRE-RESISTANCE MODULE OWNS THIS FIELD IF ONE IS EQUIPPED, and
+            // this system boosts from ITS value rather than from the prefab's.
+            //
+            // Without this the two fight every frame: a ship-stat module writes
+            // the tick rate once at install, and the line at the bottom of this
+            // method - which runs from a prefix on DamagableResource.Update -
+            // writes it straight back to `box.baseInterval` on the next frame.
+            // The module would appear to do nothing at all, and the reason
+            // would be invisible in both files.
+            //
+            // Negative means "nobody owns it", which is the overwhelmingly
+            // common case and keeps the old behaviour exactly.
+            float owned = ModuleForgeShipStats.Wanted(
+                data, ModuleForgeShipStats.FireTickRate);
+
+            if (owned >= 0f)
+                baseInterval = owned;
             float desired;
 
             if (Delta <= 0f || baseInterval <= 0f || IsExcluded(data))

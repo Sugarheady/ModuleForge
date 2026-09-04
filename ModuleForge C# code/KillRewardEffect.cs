@@ -134,12 +134,19 @@ namespace ModuleForge
 
             if (given > 0f && resource != null)
             {
-                if (asPickup)
+                // A pickup that cannot be dropped falls through to paying the
+                // tank, rather than paying nothing. The reward the file asked
+                // for is "this much of this resource per kill"; the pickup is
+                // how it arrives, and a missing prefab should cost the flourish
+                // and not the payout.
+                bool dropped =
+                    asPickup &&
                     ModuleForgeKillPickup.Drop(
                         victim != null ? victim.transform.position
                                        : killer.transform.position,
                         resource, given);
-                else if (killer.HasTank(resource))
+
+                if (!dropped && killer.HasTank(resource))
                     Grant(killer.GetTank(resource), given);
             }
 
@@ -330,7 +337,14 @@ namespace ModuleForge
                 buffDuration = this.buffDuration,
                 buffFireRate = this.buffFireRate,
                 buffDamage = this.buffDamage,
-                buffMaxStacks = this.buffMaxStacks
+                buffMaxStacks = this.buffMaxStacks,
+
+                // Was missing, so a per-module indicator override was silently
+                // dropped on every real instance: `Module`'s constructor Clones
+                // every effect off the ModuleData, so THIS is the copy the game
+                // actually runs and anything not listed here reverts to the
+                // global config.
+                buffIndicator = this.buffIndicator
             };
         }
     }

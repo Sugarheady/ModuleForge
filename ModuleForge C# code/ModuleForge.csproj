@@ -107,6 +107,14 @@
     <Reference Include="UnityEngine.Physics2DModule">
       <HintPath>$(PunkManaged)\UnityEngine.Physics2DModule.dll</HintPath>
     </Reference>
+    <!-- Only for reading Sfx.audioClips when resolving one of the GAME's own
+         sound names (ForgeAssets.StockSound). This mod plays custom audio
+         through Weapon Forge and does not need the pipeline itself; it does
+         need to see that an Sfx has no clip, because 70 of the game's 259
+         entries are declared empty and resolve to silence. -->
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(PunkManaged)\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ModuleForgePlugin.cs" />
@@ -133,10 +141,35 @@
     <Compile Include="ModuleForgeProjectilePatch.cs" />
     <Compile Include="PhasingModuleEffect.cs" />
     <Compile Include="PierceModuleEffect.cs" />
+    <Compile Include="ExtraWeaponStatEffect.cs" />
+    <Compile Include="WeaponResourceEffect.cs" />
+    <Compile Include="ModuleForgeUnits.cs" />
+    <Compile Include="ModuleForgeShipStats.cs" />
+    <Compile Include="ModuleForgeInvuln.cs" />
+    <Compile Include="ShipStatEffect.cs" />
+    <Compile Include="InvulnEffect.cs" />
+    <Compile Include="ModuleForgeStealth.cs" />
+    <Compile Include="StealthEffect.cs" />
+    <Compile Include="ModuleForgeAmmo.cs" />
+    <Compile Include="AmmoEffect.cs" />
+    <Compile Include="CellConvertEffect.cs" />
+    <Compile Include="ModuleForgeLastStand.cs" />
+    <Compile Include="LastStandEffect.cs" />
     <Compile Include="ModuleForgeKills.cs" />
     <Compile Include="KillRewardEffect.cs" />
     <Compile Include="ModuleForgeKillBuff.cs" />
     <Compile Include="ModuleForgeKillPickup.cs" />
+    <Compile Include="ModuleForgeCrit.cs" />
+    <Compile Include="ModuleForgeCritCompat.cs" />
+    <Compile Include="ModuleForgeWeaponStats.cs" />
+    <Compile Include="ModuleForgeCritPatch.cs" />
+    <Compile Include="ModuleForgeUnitTint.cs" />
+    <Compile Include="CritEffect.cs" />
+    <Compile Include="ModuleForgeLeech.cs" />
+    <Compile Include="ModuleForgeLeechCompat.cs" />
+    <Compile Include="ModuleForgeLeechPatch.cs" />
+    <Compile Include="ModuleForgeLeechOrb.cs" />
+    <Compile Include="LeechEffect.cs" />
     <Compile Include="ForgeInterop.cs" />
     <Compile Include="StarterFiles.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

@@ -23,6 +23,10 @@ namespace ModuleForge
             {
                 ModuleForgeBurn.Reset();
                 ModuleForgeProjectile.Reset();
+                ModuleForgeCrit.Reset();
+                ModuleForgeLeech.Reset();
+                // Holds live `WeaponBase` keys, which do not survive a run.
+                ModuleForgeWeaponStats.Reset();
             }
         }
 
@@ -33,6 +37,10 @@ namespace ModuleForge
             {
                 ModuleForgeBurn.Reset();
                 ModuleForgeProjectile.Reset();
+                ModuleForgeCrit.Reset();
+                ModuleForgeLeech.Reset();
+                // Holds live `WeaponBase` keys, which do not survive a run.
+                ModuleForgeWeaponStats.Reset();
             }
         }
     }

@@ -71,6 +71,70 @@ namespace ModuleForge
                             TextFormatter.capsColor, "PIERCE"),
                         pierce.ToString("0.##")));
                 }
+
+                // CRIT - ONE line, from whichever mod owns the mechanic. Not a
+                // sum of two halves like PIERCE above: with Weapon Forge
+                // installed, this mod's crit modules have already pushed their
+                // chance into that mod's engine, so its total already contains
+                // them and adding ours again would double-count.
+                float critChance, critMultiplier;
+
+                bool hasCrit = ForgeInterop.WeaponCritTotal(
+                    __instance, out critChance, out critMultiplier);
+
+                if (!hasCrit && !ForgeInterop.HasWeaponCrit)
+                {
+                    ModuleForgeCrit.Options ignored;
+
+                    hasCrit = ModuleForgeCrit.Resolve(
+                        __instance, out critChance, out critMultiplier,
+                        out ignored);
+                }
+
+                if (hasCrit)
+                {
+                    results.Add(new DisplayableProperty(
+                        TextFormatter.ColoredText(
+                            TextFormatter.capsColor, "CRIT"),
+                        (critChance * 100f).ToString("0.#") + "% X" +
+                        critMultiplier.ToString("0.##")));
+                }
+
+                // LEECH - one line, from whichever mod owns the mechanic, for
+                // the same reason as CRIT above.
+                float share, flatHeal;
+
+                bool hasLeech = ForgeInterop.WeaponLeechTotal(
+                    __instance, out share, out flatHeal);
+
+                if (!hasLeech && !ForgeInterop.HasWeaponLeech)
+                {
+                    float cap, delay;
+                    Resource pool;
+                    ModuleForgeLeech.Options ignoredOptions;
+
+                    hasLeech = ModuleForgeLeech.Resolve(
+                        __instance, out share, out flatHeal, out cap,
+                        out delay, out pool, out ignoredOptions);
+                }
+
+                if (hasLeech)
+                {
+                    string text = (share > 0f)
+                        ? (share * 100f).ToString("0.#") + "%"
+                        : "";
+
+                    if (flatHeal > 0f)
+                    {
+                        text += (text.Length > 0 ? " +" : "+") +
+                                flatHeal.ToString("0.##");
+                    }
+
+                    results.Add(new DisplayableProperty(
+                        TextFormatter.ColoredText(
+                            TextFormatter.capsColor, "LEECH"),
+                        text));
+                }
             }
             catch (Exception e)
             {

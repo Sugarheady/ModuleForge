@@ -49,6 +49,254 @@ namespace ModuleForge
             return null;
         }
 
+        // A sprite, or a NUMBERED RUN of them as one flipbook.
+        //
+        // STOCK ART ONLY, deliberately. Custom PNGs live in Weapon Forge's
+        // sprites folder and are borrowed through ForgeInterop everywhere else -
+        // but the one caller here is the standalone leech orb, which by
+        // definition only runs when Weapon Forge is ABSENT. Reaching for the
+        // borrowed loader would be dead code, and `TryResolveIcon` rebuilds at
+        // the module-icon footprint (24x24 at PPU 40) which is the wrong size
+        // for anything that is not an icon.
+        //
+        // THE NAMING RULE MATCHES WEAPON FORGE'S, and both are shaped by what
+        // must not break: a name ending in _<digits> means exactly that one
+        // frame, because names like "part_cyrcle_12" are already in use and
+        // animating them through the whole run would change existing art. A
+        // sequence is asked for by the BARE BASE ("area_zero_particle_tuff" =
+        // nine tuff-bubble frames) or an "Anim" suffix.
+        private static readonly Dictionary<string, Sprite[]> _runs =
+            new Dictionary<string, Sprite[]>(StringComparer.OrdinalIgnoreCase);
+
+        // The name may carry a FRAME SELECTION, the same syntax Weapon Forge
+        // uses so there is one vocabulary across both mods:
+        //
+        //     "area_zero_particle_tuff"        all nine frames
+        //     "area_zero_particle_tuff:2-6"    frames 2 to 6
+        //     "area_zero_particle_tuff:8-0"    all nine, REVERSED
+        //     "area_zero_particle_tuff:0,3,5"  those three, in that order
+        //
+        // Frame numbers are 0-based, and for a stock run the number IS the one in
+        // the sprite's name. SPEED is NOT taken from the name here: this mod's
+        // one caller (the leech orb) has its own `orbFps` key, so an `@fps`
+        // suffix would be two ways to say one thing - it warns and points at the
+        // key rather than being ignored.
+        //
+        // Duplicated rather than borrowed, like the tint owner and the buff HUD:
+        // the caller only runs with Weapon Forge absent.
+        public static Sprite[] ResolveSpriteFrames(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            string raw = name.Trim();
+            Sprite[] cached;
+
+            if (_runs.TryGetValue(raw, out cached))
+                return cached;
+
+            Sprite[] found = null;
+
+            try
+            {
+                string key = raw;
+                int[] order = null;
+
+                int at = key.LastIndexOf('@');
+
+                if (at >= 0)
+                {
+                    Log.LogWarning(
+                        "sprite name '" + raw + "': a speed in the name ('@...') " +
+                        "is a Weapon Forge spelling. Here the animation speed is " +
+                        "the effect's own \"orbFps\" key, so this part is " +
+                        "ignored - the frames still work.");
+
+                    key = key.Substring(0, at).Trim();
+                }
+
+                int colon = key.LastIndexOf(':');
+
+                if (colon >= 0)
+                {
+                    order = ParseOrder(key.Substring(colon + 1).Trim(), raw);
+                    key = key.Substring(0, colon).Trim();
+                }
+
+                found = Gather(key);
+
+                if (order != null && found != null && found.Length > 0)
+                    found = Reorder(found, order, raw);
+            }
+            catch (Exception e)
+            {
+                Log.LogWarning("Resolving sprite frames failed: " + e.Message);
+            }
+
+            _runs[raw] = found;
+            return found;
+        }
+
+        // "2-6" | "6-2" | "0,3,5" | "4"
+        private static int[] ParseOrder(string text, string raw)
+        {
+            if (string.IsNullOrEmpty(text))
+                return null;
+
+            var made = new List<int>();
+
+            foreach (string chunk in text.Split(','))
+            {
+                string part = chunk.Trim();
+
+                if (part.Length == 0)
+                    continue;
+
+                int dash = part.IndexOf('-', 1);
+
+                if (dash > 0)
+                {
+                    int a, b;
+
+                    if (!int.TryParse(part.Substring(0, dash).Trim(), out a) ||
+                        !int.TryParse(part.Substring(dash + 1).Trim(), out b))
+                    {
+                        Log.LogWarning(
+                            "sprite name '" + raw + "': '" + part + "' is not a " +
+                            "frame range. Use \"2-6\", \"6-2\" to reverse it, " +
+                            "\"0,3,5\" for a list, or \"4\" for one frame.");
+                        continue;
+                    }
+
+                    // A RANGE RUNS EITHER WAY - that is the reverse feature.
+                    int step = (b >= a) ? 1 : -1;
+
+                    for (int n = a; ; n += step)
+                    {
+                        made.Add(n);
+
+                        if (n == b || made.Count > 512)
+                            break;
+                    }
+                }
+                else
+                {
+                    int one;
+
+                    if (int.TryParse(part, out one))
+                        made.Add(one);
+                }
+            }
+
+            return (made.Count > 0) ? made.ToArray() : null;
+        }
+
+        private static Sprite[] Reorder(Sprite[] frames, int[] order, string raw)
+        {
+            var made = new List<Sprite>(order.Length);
+
+            for (int i = 0; i < order.Length; i++)
+            {
+                int n = order[i];
+
+                if (n >= 0 && n < frames.Length && frames[n] != null)
+                    made.Add(frames[n]);
+            }
+
+            if (made.Count == 0)
+            {
+                // Falling through to the full run is the useful failure: the art
+                // appears and the log says why it is not what was asked for.
+                Log.LogWarning(
+                    "sprite name '" + raw + "': none of those frame numbers " +
+                    "exist - this animation has " + frames.Length +
+                    " frame(s), numbered 0 to " + (frames.Length - 1) +
+                    ". Using all of them.");
+
+                return frames;
+            }
+
+            return made.ToArray();
+        }
+
+        private static Sprite[] Gather(string key)
+        {
+            // An explicit frame number is a request for that frame.
+            if (EndsInFrameNumber(key))
+            {
+                var one = FindAsset(typeof(Sprite), key) as Sprite;
+                return (one != null) ? new[] { one } : null;
+            }
+
+            string baseName = key;
+
+            if (baseName.EndsWith("Anim", StringComparison.OrdinalIgnoreCase) &&
+                baseName.Length > 4)
+            {
+                baseName = baseName.Substring(0, baseName.Length - 4);
+            }
+
+            // ONE scan for the whole run. FindAsset above walks every loaded
+            // Sprite on each call, so probing _0, _1, _2 separately would be one
+            // full scan per frame.
+            var byIndex = new Dictionary<int, Sprite>();
+            string prefix = baseName + "_";
+
+            foreach (var obj in Resources.FindObjectsOfTypeAll(typeof(Sprite)))
+            {
+                var s = obj as Sprite;
+
+                if (s == null || s.name == null ||
+                    !s.name.StartsWith(
+                        prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int n;
+
+                if (!int.TryParse(s.name.Substring(prefix.Length), out n) ||
+                    n < 0)
+                {
+                    continue;
+                }
+
+                if (!byIndex.ContainsKey(n))
+                    byIndex[n] = s;
+            }
+
+            var run = new List<Sprite>();
+
+            // Gaps END the run rather than being skipped: 0,1,2,7 is far more
+            // likely to be two effects sharing a prefix than one animation with
+            // a hole in it.
+            for (int n = 0; byIndex.ContainsKey(n); n++)
+                run.Add(byIndex[n]);
+
+            if (run.Count > 0)
+                return run.ToArray();
+
+            // No run - fall back to the exact name as a single sprite.
+            var exact = FindAsset(typeof(Sprite), baseName) as Sprite;
+            return (exact != null) ? new[] { exact } : null;
+        }
+
+        private static bool EndsInFrameNumber(string name)
+        {
+            int i = name.LastIndexOf('_');
+
+            if (i < 0 || i == name.Length - 1)
+                return false;
+
+            for (int c = i + 1; c < name.Length; c++)
+            {
+                if (!char.IsDigit(name[c]))
+                    return false;
+            }
+
+            return true;
+        }
+
         public static Resource ResolveResource(string name)
         {
             if (string.IsNullOrEmpty(name))
@@ -89,6 +337,39 @@ namespace ModuleForge
         // across both. Without Weapon Forge installed, only stock sprites
         // resolve and the warning says so.
         //
+        // A GAME sprite for use as an icon, frame-suffix aware.
+        //
+        // `:frames` is the ONLY way to choose which frame of a numbered run an
+        // icon shows, and without this the whole string reached `FindAsset`, so
+        // "HUD_GridTiles_04:2" matched no asset and fell through to the "not a
+        // sprite in the game" warning with the suffix as the unstated reason.
+        //
+        // The exact name is tried FIRST, so nothing already written changes and
+        // an unsuffixed icon never pays for a run scan. `@fps` is dropped
+        // rather than warned about: an icon genuinely cannot animate here -
+        // the widget assigns a sprite and nothing ever ticks it.
+        private static Sprite StockIcon(string name)
+        {
+            var exact = FindAsset(typeof(Sprite), name) as Sprite;
+
+            if (exact != null)
+                return exact;
+
+            int at = name.LastIndexOf('@');
+            string key = (at >= 0) ? name.Substring(0, at).Trim() : name;
+
+            if (key.IndexOf(':') < 0)
+            {
+                return (at >= 0)
+                    ? FindAsset(typeof(Sprite), key) as Sprite
+                    : null;
+            }
+
+            Sprite[] frames = ResolveSpriteFrames(key);
+
+            return (frames != null && frames.Length > 0) ? frames[0] : null;
+        }
+
         // Stock is tried FIRST: every module written before custom icons
         // existed names a stock sprite, and a same-named PNG quietly
         // replacing one would be horrible to debug. A collision is reported
@@ -100,7 +381,7 @@ namespace ModuleForge
 
             name = name.Trim();
 
-            var stock = FindAsset(typeof(Sprite), name) as Sprite;
+            var stock = StockIcon(name);
             Sprite custom = ForgeInterop.TryResolveIcon(name);
 
             if (stock != null)
@@ -140,6 +421,91 @@ namespace ModuleForge
             }
 
             return null;
+        }
+
+        // ONE OF THE GAME'S OWN SOUNDS, BY NAME - "Cells/Fuel",
+        // "Weapons/Popper/Shoot", "UI/Click". Returns the Sfx guid, which is
+        // what a sound field actually holds.
+        //
+        // NATIVE HERE RATHER THAN BORROWED, and the line is the same one
+        // ResolveIcon and ResolveColor already draw: **custom-file loading is
+        // Weapon Forge's pipeline and is borrowed; looking a name up in an
+        // asset the GAME owns is not a decoder and has to work standalone.**
+        // Without this, a Module Forge user with only this mod installed could
+        // reach the game's 259 sounds solely by typing a raw guid, because
+        // WeaponForge.ForgeSfxRegistry matches on guid alone.
+        //
+        // Kept in step with WeaponForge.ForgeSfxRegistry.StockGuid, including
+        // the empty-entry warning - 70 of the 259 are declared with no clip at
+        // all and resolve perfectly while playing nothing. See SOUNDS.txt.
+        public static string StockSound(string name, string fileName)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            name = name.Trim();
+
+            AudioDatabase db = Database();
+
+            if (db == null || db.sfxs == null)
+                return null;
+
+            foreach (Sfx s in db.sfxs)
+            {
+                if (s == null || string.IsNullOrEmpty(s.name))
+                    continue;
+
+                if (!string.Equals(s.name, name,
+                                   StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (s.audioClips == null || s.audioClips.Items == null ||
+                    s.audioClips.Items.Count == 0)
+                {
+                    Log.LogWarning(
+                        fileName + ": '" + s.name + "' is a real sound in " +
+                        "the game's audio database but it has NO CLIP - 70 " +
+                        "of the 259 entries are declared and empty like " +
+                        "this, so it will be silent. See SOUNDS.txt, which " +
+                        "marks every empty one.");
+                }
+
+                return s.guid;
+            }
+
+            return null;
+        }
+
+        private static AudioDatabase _audioDb;
+        private static bool _audioSearched;
+
+        private static AudioDatabase Database()
+        {
+            if (_audioSearched)
+                return _audioDb;
+
+            _audioSearched = true;
+
+            // Prefer the fullest one: FindObjectsOfTypeAll can turn up an
+            // empty placeholder asset alongside the real database. Same guard
+            // Weapon Forge's copy uses.
+            UnityEngine.Object[] all =
+                Resources.FindObjectsOfTypeAll(typeof(AudioDatabase));
+
+            for (int i = 0; i < all.Length; i++)
+            {
+                var db = all[i] as AudioDatabase;
+
+                if (db == null || db.sfxs == null)
+                    continue;
+
+                if (_audioDb == null || db.sfxs.Count > _audioDb.sfxs.Count)
+                    _audioDb = db;
+            }
+
+            return _audioDb;
         }
 
         // "#rrggbb" / html name / a game ColorAsset name ("ColorPurple").

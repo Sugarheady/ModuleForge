@@ -250,6 +250,163 @@ namespace ModuleForge
             }
         }
 
+        // Stat card: the crit chance and multiplier in force on a LIVE weapon,
+        // as Weapon Forge sees them.
+        //
+        // A total, not the weapon's own half. When Weapon Forge is installed it
+        // owns the crit damage patch and this mod's crit modules have already
+        // pushed their chance into ITS engine, so this number already contains
+        // them - adding our own on top would double-count. Returns false when
+        // Weapon Forge is absent, and then ModuleForgeCrit is the authority
+        // instead. (Different shape from the PIERCE pair above on purpose: there
+        // the two mods keep separate counters and the card sums them; here there
+        // is one counter, wherever it lives.)
+        public static bool WeaponCritTotal(
+            WeaponBase weapon, out float chance, out float multiplier)
+        {
+            chance = 0f;
+            multiplier = 0f;
+
+            EnsureCrit();
+
+            if (_critTotal == null || weapon == null)
+                return false;
+
+            try
+            {
+                var args = new object[] { weapon, 0f, 0f };
+
+                if (!(bool)_critTotal.Invoke(null, args))
+                    return false;
+
+                chance = (float)args[1];
+                multiplier = (float)args[2];
+                return chance > 0f;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // The leech in force on a LIVE weapon, as Weapon Forge sees it - its own
+        // file plus this mod's module contributions, which have already been
+        // pushed into ITS engine when that mod is installed. One number, not two
+        // halves; adding ours again would double-count.
+        public static bool WeaponLeechTotal(
+            WeaponBase weapon, out float fraction, out float flat)
+        {
+            fraction = 0f;
+            flat = 0f;
+
+            EnsureCrit();
+
+            if (_leechTotal == null || weapon == null)
+                return false;
+
+            try
+            {
+                // Resolve(WeaponBase, out Config, out fraction, out flat,
+                //         out cap, out perEnemyDelay) - the Config and the two
+                // limits are not needed for a stat line.
+                var args = new object[] { weapon, null, 0f, 0f, 0f, 0f };
+
+                if (!(bool)_leechTotal.Invoke(null, args))
+                    return false;
+
+                fraction = (float)args[2];
+                flat = (float)args[3];
+                return fraction > 0f || flat > 0f;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool HasWeaponLeech
+        {
+            get
+            {
+                EnsureCrit();
+                return _leechTotal != null;
+            }
+        }
+
+        // True when Weapon Forge's crit engine is reachable at all, which is
+        // also the answer to "who owns the crit patch".
+        public static bool HasWeaponCrit
+        {
+            get
+            {
+                EnsureCrit();
+                return _critTotal != null;
+            }
+        }
+
+        // Resolved separately from Ensure() and NOT through
+        // AccessTools.TypeByName, which logs a warning when the type is absent -
+        // "Weapon Forge is not installed" is a completely normal state.
+        private static bool _critInit;
+        private static MethodInfo _critTotal;   // ForgeCrit.TryGetTotal
+        private static MethodInfo _leechTotal;  // ForgeLeech.Resolve
+
+        private static void EnsureCrit()
+        {
+            if (_critInit)
+                return;
+
+            _critInit = true;
+
+            try
+            {
+                Type crit = null;
+
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        crit = asm.GetType("WeaponForge.ForgeCrit", false);
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+
+                    if (crit != null)
+                        break;
+                }
+
+                if (crit != null)
+                    _critTotal = AccessTools.Method(crit, "TryGetTotal");
+
+                Type leech = null;
+
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        leech = asm.GetType("WeaponForge.ForgeLeech", false);
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+
+                    if (leech != null)
+                        break;
+                }
+
+                if (leech != null)
+                    _leechTotal = AccessTools.Method(leech, "Resolve");
+            }
+            catch
+            {
+                _critTotal = null;
+                _leechTotal = null;
+            }
+        }
+
         // Tooltip: whether the weapon itself is a phasing weapon.
         public static bool WeaponBakedPhasing(WeaponData weapon)
         {

@@ -15,22 +15,22 @@ namespace ModuleForge
     // buff that tries to restore an old value after a rebuild writes back a
     // number that is no longer the baseline.
     //
-    // So the baseline is re-captured whenever it changes underneath us, and the
-    // buff is always expressed as baseline x multiplier rather than as a
-    // remembered delta. That way a rebuild costs at most one frame of buff, and
-    // never corrupts the weapon's real stats.
+    // So the buff is always expressed as baseline x multiplier rather than as a
+    // remembered delta, and the baseline is owned by
+    // `ModuleForgeWeaponStats` - which captures it ONCE per weapon and hands it
+    // back when the last contributor leaves. That way a rebuild costs at most
+    // one frame of buff, never corrupts the weapon's real stats, and cannot be
+    // overwritten by Weapon Forge's per-frame writers. See Push.
     public static class ModuleForgeKillBuff
     {
         private static readonly ManualLogSource Log =
             BepInEx.Logging.Logger.CreateLogSource("ModuleForge.KillBuff");
 
+        public const string Key = "onKill";
+
         private class State
         {
             public WeaponBase weapon;
-            public float baseFireRate;
-            public float baseDamage;
-            public float appliedFireRate;   // what we last wrote
-            public float appliedDamage;
             public readonly List<float> fireStacks = new List<float>();
             public readonly List<float> dmgStacks = new List<float>();
             public readonly List<float> expiry = new List<float>();
@@ -122,7 +122,6 @@ namespace ModuleForge
             if (s == null)
             {
                 s = new State { weapon = weapon };
-                Rebase(s);
                 _live.Add(s);
             }
 
@@ -161,28 +160,26 @@ namespace ModuleForge
             return null;
         }
 
-        private static void Rebase(State s)
-        {
-            s.baseFireRate = s.weapon.FireRate;
-            s.baseDamage = s.weapon.Damage.amount;
-            s.appliedFireRate = s.baseFireRate;
-            s.appliedDamage = s.baseDamage;
-        }
-
-        // Writes baseline x (1 + sum of stacks). Re-captures the baseline first
-        // if something else has changed the weapon since we last wrote - that is
-        // the rebuild case, and treating the new value as the baseline is the
-        // only correct reading of it.
+        // Publishes baseline x (1 + sum of stacks) to `ModuleForgeWeaponStats`.
+        //
+        // IT USED TO OWN THAT BASELINE ITSELF AND RE-CAPTURE ON DRIFT, which
+        // reads as careful and is a real bug against a PER-FRAME writer - and
+        // Weapon Forge has two (`overheat` with `response: slow`, and `spinUp`).
+        // Against either of those, "something else has changed the weapon" was
+        // true every single frame, so:
+        //
+        //   * this mod's write was overwritten on the next frame - **an onKill
+        //     fire-rate module did nothing at all on such a weapon**;
+        //   * the re-capture adopted the other mod's modified number as the
+        //     weapon's own baseline, and expiry wrote it back.
+        //
+        // Both mods logged exactly what they intended. Publishing a named
+        // multiplier into one owner has no ordering to get wrong; see
+        // ModuleForgeWeaponStats for which mod owns the table.
         private static void Push(State s)
         {
             if (s.weapon == null)
                 return;
-
-            if (!Nearly(s.weapon.FireRate, s.appliedFireRate) ||
-                !Nearly(s.weapon.Damage.amount, s.appliedDamage))
-            {
-                Rebase(s);
-            }
 
             float fire = 0f, dmg = 0f;
 
@@ -192,19 +189,22 @@ namespace ModuleForge
                 dmg += s.dmgStacks[i];
             }
 
-            s.weapon.FireRate = s.baseFireRate * (1f + fire);
-
-            Damage d = s.weapon.Damage;
-            d.amount = s.baseDamage * (1f + dmg);
-            s.weapon.Damage = d;
-
-            s.appliedFireRate = s.weapon.FireRate;
-            s.appliedDamage = s.weapon.Damage.amount;
+            // Stacks ADD and the total is one multiplier, exactly as before -
+            // three 20% stacks are +60%, not 1.2 cubed.
+            Publish(s.weapon, ModuleForgeWeaponStats.FireRate, fire);
+            Publish(s.weapon, ModuleForgeWeaponStats.Damage, dmg);
         }
 
-        private static bool Nearly(float a, float b)
+        // A bonus of 0 WITHDRAWS rather than publishing a multiplier of 1, so
+        // the owner forgets its captured base and a legitimate change to the
+        // weapon - an augmentation, a cluster rebuild - is picked up instead of
+        // being pinned by a contribution that does nothing.
+        private static void Publish(WeaponBase weapon, int stat, float bonus)
         {
-            return Mathf.Abs(a - b) < 0.0001f;
+            if (Mathf.Abs(bonus) > 0.0001f)
+                ModuleForgeWeaponStats.Set(weapon, stat, Key, 1f + bonus);
+            else
+                ModuleForgeWeaponStats.Clear(weapon, stat, Key);
         }
 
         private static void TrackSource(
@@ -339,12 +339,10 @@ namespace ModuleForge
 
                 if (s.expiry.Count == 0)
                 {
-                    // Fully expired: hand the weapon back exactly as found.
-                    s.weapon.FireRate = s.baseFireRate;
-
-                    Damage d = s.weapon.Damage;
-                    d.amount = s.baseDamage;
-                    s.weapon.Damage = d;
+                    // Fully expired: hand the weapon back exactly as found. One
+                    // call covers every stat this feature can touch, so a bonus
+                    // added here later cannot be left behind.
+                    ModuleForgeWeaponStats.Clear(s.weapon, Key);
 
                     _live.RemoveAt(i);
                 }

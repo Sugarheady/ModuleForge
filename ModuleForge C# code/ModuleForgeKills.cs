@@ -86,6 +86,33 @@ namespace ModuleForge
         private static readonly Dictionary<Component, WeaponBase> _shots =
             new Dictionary<Component, WeaponBase>();
 
+        // "Something fired." Raised from the DoShoot prefix below, which is the
+        // one method provably on the path of every shot - including gadget
+        // weapons, which bypass Shooter entirely and would be missed by
+        // anything watching the trigger instead.
+        //
+        // The weapon's Owner IS valid here (Equip has long since run), which is
+        // what lets a listener tell the player's shots from everyone else's.
+        public static event Action<WeaponBase> ShotFired;
+
+        private static void RaiseShotFired(WeaponBase weapon)
+        {
+            Action<WeaponBase> h = ShotFired;
+
+            if (h == null)
+                return;
+
+            try
+            {
+                h(weapon);
+            }
+            catch (Exception e)
+            {
+                // A listener must never be able to stop the gun firing.
+                Log.LogError("A ShotFired listener threw: " + e);
+            }
+        }
+
         public static void BeginShoot(WeaponBase weapon)
         {
             _firing = weapon;
@@ -107,6 +134,33 @@ namespace ModuleForge
                 Prune();
 
             _shots[shot] = _firing;
+        }
+
+        // Credit a shot that was NOT created by the game's own firing path.
+        //
+        // `StampShot` only records while `BeginShoot`/`EndShoot` bracket the
+        // call, which is right for every shot the game fires and no use at all
+        // for one born mid-flight. Weapon Forge creates those - a split
+        // fragment, a chain jump, a rallied reflect, a catalyst copy - and it
+        // has an identical map of its own, so before this existed such a shot
+        // was attributed in that mod and nowhere here. A `KillRewardEffect` on
+        // the weapon's grid then compared the killing weapon against its own
+        // `_weapon` scope, found nothing, and paid nothing: "the damage is
+        // being passed on from the flechette weapon but the onkill effects are
+        // not."
+        //
+        // Public and deliberately loose about who calls it. Weapon Forge finds
+        // it by type name, exactly as the cross-mod rules require, and this mod
+        // never needs to know whether that mod is installed.
+        public static void Attribute(Component shot, WeaponBase weapon)
+        {
+            if (shot == null || weapon == null)
+                return;
+
+            if (_shots.Count > 512)
+                Prune();
+
+            _shots[shot] = weapon;
         }
 
         private static void Prune()
@@ -165,6 +219,14 @@ namespace ModuleForge
         {
             _credit = null;
         }
+
+        // Public because it is useful well beyond kills: it is live for the
+        // whole duration of all three damage routes, so anything reacting to
+        // damage can ask "which weapon did this?" without adding a patch. It is
+        // NULL for a burn tick or a cell collision, which makes it a free gate
+        // for anything that should apply to weapon damage and not to
+        // damage-over-time - that is exactly how the crit modules use it.
+        public static WeaponBase Credit { get { return _credit; } }
 
         public static WeaponBase CurrentExplosionWeapon
         {
@@ -261,6 +323,7 @@ namespace ModuleForge
             static void Prefix(WeaponBase __instance)
             {
                 BeginShoot(__instance);
+                RaiseShotFired(__instance);
             }
 
             // Finalizer, not Postfix: if DoShoot throws, a stale weapon left in

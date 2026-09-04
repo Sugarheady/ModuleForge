@@ -116,6 +116,12 @@ namespace ModuleForge
 
             harmony.PatchAll();
 
+            // Not a [HarmonyPatch] attribute because the target is a CLOSED
+            // GENERIC - SavableComponent<Unit.Data>.Bind - which PatchAll
+            // cannot express. It degrades to a scan if it fails, so a failure
+            // here is slow rather than broken.
+            ModuleForgeUnits.Patch(harmony);
+
             Logger.LogInfo("Module Forge patches applied");
         }
 

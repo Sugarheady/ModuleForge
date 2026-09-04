@@ -24,7 +24,18 @@ namespace ModuleForge
             // Skip all work until a booster has actually been used this
             // session; keep running afterwards to restore values when the
             // boost is removed.
-            if (ModuleForgeBurn.Delta <= 0f && !ModuleForgeBurn.EverModified)
+            bool burn =
+                ModuleForgeBurn.Delta > 0f || ModuleForgeBurn.EverModified;
+
+            // A FIRE-RESISTANCE module needs the same per-frame treatment, and
+            // for the same reason spelled out at the top of this file: the game
+            // rebuilds `burnProperties` from the prefab on spawn and on
+            // continue, so a value stamped once at install is silently reverted.
+            // Both gates are plain bool reads, so a run with neither costs
+            // nothing.
+            bool resist = ModuleForgeShipStats.AnyBurnOwned;
+
+            if (!burn && !resist)
                 return;
 
             try
@@ -35,7 +46,16 @@ namespace ModuleForge
                 if (unit == null)
                     return;
 
-                ModuleForgeBurn.ApplyTo(unit.ComponentData);
+                // ORDER MATTERS. Resistance re-asserts the values it owns
+                // first; the burn engine then layers its tick-rate boost on
+                // top, reading the resisted value as its base. Reversed, the
+                // boost would be computed against a number that was about to
+                // change.
+                if (resist)
+                    ModuleForgeShipStats.ReassertBurn(unit.ComponentData);
+
+                if (burn)
+                    ModuleForgeBurn.ApplyTo(unit.ComponentData);
             }
             catch (Exception e)
             {
