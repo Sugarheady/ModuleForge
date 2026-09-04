@@ -88,7 +88,12 @@ SHIP effects (use with "target": "ship"):
   DrainResourceEffect     { resource, amount }        drain/sec (neg=gain)
   AddShieldEffect         { resource, amount }        shield; 0.5 = 50%
 
-EITHER GRID - works with "target": "ship" OR "weapon":
+EITHER GRID - works with "target": "ship" OR "weapon". Which grid you
+put one in decides its SCOPE, and that is free rather than a flag:
+  CritEffect       a chance for hits to do multiplied damage
+  LeechEffect      your hits heal you
+  KillRewardEffect pays out when you kill something
+
   KillRewardEffect (alias "onKill")
      { resource, amount, asPickup, chance, maxPerSecond, clearBurn,
        buffDuration, buffFireRate, buffDamage, buffMaxStacks }
@@ -116,6 +121,54 @@ EITHER GRID - works with "target": "ship" OR "weapon":
                Clamped to the tank's capacity - it cannot overfill.
     asPickup   drop a real pickup on the corpse to fly through instead
                of granting it instantly. Missable, and more visible.
+
+               FIXED 2026-08-23 - it used to stop working silently, and
+               often before it worked at all. The pickup to copy was
+               learned only from pickups that had already SPAWNED in the
+               room, and the fallback search could not see prefabs, so:
+               a kill before any crate had dropped anything found
+               nothing, latched a "searched" flag, and disabled the
+               feature for the whole run. Worse, a pickup DESTROYS
+               itself when collected, so a cached one silently became
+               null the moment you picked it up. It now reads the eight
+               pickup PREFABS directly, which are never destroyed.
+
+               THE GAME SHIPS NINE, and nearly every resource has one:
+
+                 Fuel      blue orb        (prefab "FuelPickup")
+                 Caps      orange orb
+                 Purple    pink orb
+                 White     white
+                 Health    red             (prefab "ResourcePickup_Red")
+                 Tech      purple squares
+                 Money     yellow, three sizes for 10 / 20 / 50
+
+               Two are named nothing like their resource: HEALTH IS
+               "ResourcePickup_Red" and FUEL IS "FuelPickup". You never
+               type either - you name the RESOURCE and the right prefab
+               is found for you. The only stock resource with no pickup
+               of its own is ELECTRON.
+
+               A resource with no pickup prefab of its own borrows the
+               orb and RE-TINTS it to that resource's own colour, so
+               only the shape is borrowed - and if even that is
+               impossible the resource is granted straight into the tank
+               instead. Either way THE REWARD STILL PAYS. It used to
+               warn that it was "granting it directly" and then grant
+               nothing at all.
+
+               FIXED AGAIN 2026-08-26 - the 2026-08-23 fix above was
+               written but never ran. The prefab scan guarded itself on
+               "have I got anything cached yet", and a separate path
+               fills that same cache from every pickup the game spawns -
+               so the first crate to drop anything skipped the scan for
+               the rest of the run, and the art fell back to whatever
+               was lying around the room. Same wrong art all run, a
+               different wrong art next run.
+
+               A substitution now LOGS a warning naming the resource
+               and the prefab it borrowed, so wrong art is never a
+               mystery again.
     chance     0-1, and also a series - so a level can buy RELIABILITY
                rather than size. Rolled before the cap, so a failed roll
                does not consume it.
@@ -168,6 +221,703 @@ EITHER GRID - works with "target": "ship" OR "weapon":
                a weapon's grid, only to that weapon. maxStacks 1 means
                each kill refreshes rather than stacks.
 
+  CritEffect (alias "crit")
+     { chance, multiplierBonus, roll, overflow,
+       impact, impactScale, color, colorSeconds, colorPulse,
+       tintStrength, sfx, shake }
+
+  A chance for your hits to do MULTIPLIED damage.
+
+    { "type": "crit", "chance": 0.15 }
+
+  is the whole minimum: 15% of hits do double damage.
+
+  WHICH GRID DECIDES THE SCOPE, exactly as it does for onKill above,
+  and again you do not set a flag:
+     on the SHIP grid    -> EVERY weapon crits
+     in a WEAPON's grid  -> only THAT weapon crits
+  The module's card says which ("Applies to: this weapon" / "every
+  weapon").
+
+  A CRIT IS INVISIBLE UNLESS YOU ASK FOR A CUE. This game has no
+  floating damage numbers anywhere - no DamageNumber, no FloatingText,
+  nothing. That is why "impact" defaults ON: it is the one cue that
+  needs no work from you. Switch them all off and the build log warns
+  you.
+
+    chance     0.15 = 15%. A number ABOVE 1 is read as a percent and
+               converted (15 becomes 0.15), because "always crit,
+               fifteen stacks deep" is not something anyone types on
+               purpose - the log says when it guesses. A series, so a
+               level can buy RELIABILITY rather than size.
+
+    multiplierBonus
+               ADDED to the x2 a crit already does, so 0.5 means x2.5
+               and 0 means a plain double-damage crit.
+
+               IT IS NOT CALLED "multiplier" ON PURPOSE. On a WEAPON
+               (Weapon Forge's "crit" block) that word is the ABSOLUTE,
+               where 2 means double. The same word meaning two things
+               would be a trap - somebody writing "multiplier": 2 here
+               would get x4 with no warning - so a module uses this word
+               and the build log rejects the other one out loud.
+
+               A module with a bonus and NO chance is legitimate and
+               does nothing on its own: it makes the crits you get from
+               a weapon or another module hit harder. The log notes it
+               in case that was not the intent.
+
+    roll       WHEN THE DICE ARE ROLLED. Three modes:
+                 "hit"   once per thing damaged, so a piercing shot
+                         rolls again for each enemy. The default, and
+                         the only mode that means anything on a BEAM or
+                         an EXPLOSION.
+                 "shot"  once per projectile - a SHOTGUN rolls per
+                         PELLET, and a pellet that crits crits
+                         everything it touches.
+                 "pull"  once per trigger pull, so a whole blast crits
+                         together or not at all. Built because "half my
+                         pellets crit" reads as noise rather than as a
+                         payoff.
+
+    overflow   default TRUE. Above 100% the excess becomes a chance at a
+               SECOND crit stack instead of being thrown away: 1.5
+               always crits and half the time crits twice.
+               STACKS ADD THE BONUS, so two stacks of x2 is x3, not x4 -
+               multiplying would make three stacks x8 and stop being
+               tunable. Hard-capped at 8 stacks, so a pile of modules
+               gone wrong cannot silently produce a 40x hit.
+
+    impact / impactScale
+               a second, LARGER copy of the weapon's own impact burst.
+               On by default. PROJECTILE HITS ONLY - a beam's spark and
+               an explosion's flash are not per-hit prefabs to borrow,
+               so use colour / sound / shake for those. The log says so
+               once if a crit lands by another route.
+
+    color / colorSeconds / colorPulse
+               a brief tint on whatever got crit - a game colour name or
+               #hex. It goes through the tint owner, which keeps ONE
+               captured base colour per sprite and multiplies live
+               layers over it, so it can never bake a colour in
+               permanently the way a save-and-restore tint does.
+
+    tintStrength
+               HOW HARD THAT COLOUR COMES THROUGH, 0 to 1. 1 is the full
+               colour and is what this has always done; 0.35 is a hint
+               of it; 0 is no tint at all. Either spelling is accepted
+               ("tintStrength" or "colorStrength"), because this mod's
+               blocks are split between color* and tint* naming and
+               remembering which prefix a given block uses is a bug
+               generator.
+
+               It MULTIPLIES the pulse rather than replacing it, so a
+               half-strength pulsing tint still pulses - between
+               "nothing" and "half" rather than between "nothing" and
+               "full".
+
+               Worth turning down when several effects tint the same
+               unit: live layers MULTIPLY, so two full-strength colours
+               read as very dark. That compounding is deliberate - it is
+               what makes stacked debuffs legible - but it is a lot.
+
+               WITH WEAPON FORGE INSTALLED that mod owns the crit patch,
+               so the LOOK comes from the weapon's own "crit" block and
+               this is announced rather than applied. Set it on the
+               weapon instead; the build log says so once per run. Weapon
+               Forge takes the same key on nine different blocks.
+
+    sfx        a distinct sound. Use the READABLE NAME of any of the
+               game's own sounds - "Cells/Fuel", "UI/Click",
+               "Weapons/Popper/Shoot" - all 259 are listed in
+               SOUNDS.txt next to this file. A raw sound id still
+               works. Or the name of a CUSTOM sound - but custom
+               sounds live in Weapon Forge's "sounds" folder and only
+               resolve with that mod installed
+               (one folder and one set of names across both mods, rather
+               than a second decoder here). A name nothing knows is
+               reported in the log rather than being silently mute.
+
+    shake      kick the camera, using the WEAPON's own shake preset - so
+               it shakes like a heavier version of that gun rather than
+               a generic thump. Off by default; crit-per-hit with shake
+               on is a lot of camera.
+
+  WHERE THE NUMBERS SHOW UP
+  Hovering the MODULE shows what THAT module contributes, its scope and
+  its cues. Hovering the WEAPON shows ONE combined "CRIT 15% X2.5" line
+  for everything in force on that gun.
+
+  WITH WEAPON FORGE INSTALLED, IT OWNS THE CRIT. Both mods can crit,
+  and a crit is a patch on the game's one damage method - two of them
+  would each roll their own dice on the same hit, so a player with both
+  mods would get roughly double the crit rate they asked for and two
+  impact bursts stacked on each other. So there is exactly one owner,
+  the same bargain as the burn engine with the sides swapped:
+
+     Weapon Forge installed  -> it owns the crit patch. This module's
+                                CHANCE and MULTIPLIER are added to the
+                                weapon's own, giving one number; the
+                                LOOK (roll mode and the four cues) comes
+                                from that weapon's "crit" block, or from
+                                its defaults. The log says this once.
+     Weapon Forge absent     -> this mod runs its own crit engine and
+                                everything above applies as written.
+
+  Nothing is lost either way - with both mods, set the look on the
+  weapon and the chance on the module.
+
+  FREE CUE WITH WEAPON FORGE: a weapon with
+  "hitSound": { "pitch": "damage" } already pitches its hit tick by the
+  damage dealt, so a crit sounds heavier with no "sfx" set at all.
+
+  SOUNDS.TXT LISTS EVERY SOUND THE GAME HAS - 259 of them, with the
+  name to type, how many clips each holds (a 10-clip sound is
+  different every time it plays) and which are LOOPING or 2D. Names
+  work as of 2026-09-02; before that both mods matched on the raw id
+  only, so the game's own sounds were unreachable unless you already
+  knew a guid.
+
+  70 OF THE 259 ARE DECLARED WITH NO CLIP AT ALL. They resolve
+  perfectly and play nothing, which looks like a broken module rather
+  than a bad choice. SOUNDS.txt marks every one, and the build log
+  warns if you pick one.
+
+  LeechEffect (alias "leech", "lifesteal")
+     { fraction, flat, maxPerSecond, perEnemyDelay, resource, healOn,
+       orb, orbSprite, orbFps, orbScale, orbSpeed, orbArc, orbSpin,
+       orbLifetime, orbColor, maxOrbs, sfx }
+
+  YOUR HITS HEAL YOU.
+
+    { "type": "leech", "fraction": 0.15, "maxPerSecond": 4 }
+
+  WHICH GRID DECIDES THE SCOPE, same as onKill and crit above:
+     on the SHIP grid    -> EVERY weapon drains
+     in a WEAPON's grid  -> only THAT weapon drains
+  The card says which ("Applies to: this weapon" / "every weapon").
+
+  IT ONLY PAYS FOR DAMAGE THAT LANDED, and this is the finding the whole
+  effect is built on. The game's own Damage() refuses a hit three silent
+  ways before it ever touches a tank:
+
+      invincibility (damageBlockers)
+      i-frames (iFrameDuration)
+      the enemy having NO TANK of that damage type at all
+
+  The last one is not a corner case - it is how a Crawler resists nearly
+  every damage type. So this measures the enemy's own health pool before
+  and after the hit rather than reading the damage number. Reading the
+  number would have healed you for hits that did nothing, and you would
+  have found out as "leech is overpowered against Crawlers".
+
+  OVERKILL DOES NOT PAY. A 200-damage rocket into a 5-health fly leeches
+  off 5. (The game writes health as `tank.Value -= amount` with no
+  floor, so the raw difference there would read 200.)
+
+  BURN AND TERRAIN DAMAGE NEVER LEECH. They report no weapon, so there
+  is nothing to credit and they are excluded for free.
+
+    fraction   share of the damage you dealt. 0.15 = 15%. A series, so a
+               level can buy the share.
+
+               NOT AUTO-CORRECTED FROM A PERCENT, unlike crit's
+               "chance". Healing for more than you dealt is a legitimate
+               build, so dividing by 100 would put it out of reach - 15
+               means 1500% and the log says so loudly enough to catch a
+               typo on the first shot.
+
+    flat       a fixed amount per hit whatever the damage was. Stacks
+               with the share; either alone is a complete module. Good
+               on a weak, fast weapon where a share rounds to nothing.
+
+    maxPerSecond
+               THE NUMBER THAT DECIDES WHETHER THIS IS BALANCED, and it
+               matters MORE on a module than on a weapon. A BEAM damages
+               its target every damageRepeatDelay (0.08s on the stock
+               Caps Laser) and a piercing one does that to every enemy
+               it threads - roughly 75 heals a second through six
+               enemies. On the SHIP grid this module applies to every
+               weapon you carry, so it can find that beam without you
+               planning it. 0 = uncapped, and the log warns.
+
+               PARTIAL, not all-or-nothing: a hit that wants 3 with 2
+               left in the budget heals 2. An all-or-nothing cap makes a
+               weapon feel randomly dead.
+
+               A series, so a level can buy SUSTAIN - the more
+               interesting of the two dials on a leech module.
+
+    perEnemyDelay
+               seconds before the SAME enemy can feed you again. 0 =
+               off. A different flavour of limit: it rewards spreading
+               damage across a crowd rather than focusing one target.
+               Use both if you like.
+
+    resource   which pool refills. LEAVE IT BLANK almost always - blank
+               means your ship's own health pool, read off the ship
+               itself rather than guessed from the name "Health", so
+               there is nothing to spell wrong. Name a resource for an
+               ammo-leech or a fuel-leech instead.
+
+    healOn     "arrival" (default) or "hit".
+
+               arrival: the health lands when the bubble reaches your
+               ship, so it reads as absorption rather than as a number
+               changing. Costs a fraction of a second.
+
+               hit: instant and predictable - the one for a module that
+               wants the drain without the flourish.
+
+               AN ORB THAT CANNOT REACH YOU PAYS OUT ANYWAY after
+               orbLifetime; a lost orb would be lost HEALING, which is
+               the worst way this could fail. And with "orb": false this
+               falls back to "hit" by itself, because otherwise it would
+               heal never.
+
+  THE ABSORB ORB
+  --------------
+
+  A bubble that leaves the enemy and flies into your ship.
+
+  IT IS NOT A WEAPON AND NOT A PROJECTILE - a bare object with a sprite:
+  no collider, no faction, no damage, invisible to every projectile
+  feature in either mod. It TRACKS your ship as it flies, because a
+  fixed heading means a moving player outruns their own healing.
+
+    orb          default true. Off makes leech invisible and fully
+                 functional, and switches healOn to "hit" by itself.
+    orbSprite    default "area_zero_particle_tuff" - the bubbles from a
+                 white tuff block, all nine frames, animated.
+
+                 NAMING THE BASE ANIMATES; NAMING A FRAME DOES NOT.
+                 "area_zero_particle_tuff" plays _0 through _8 as a
+                 flipbook; "area_zero_particle_tuff_0" is that one
+                 frozen frame. The rule is that way round so nothing
+                 already written changes look - "part_cyrcle_12" has to
+                 keep meaning frame 12 rather than animating through the
+                 whole set.
+
+                 GAME SPRITES ONLY here. Custom PNGs live in Weapon
+                 Forge's sprites folder, and when that mod is installed
+                 IT owns the orb anyway. An unknown name falls back to
+                 the game's white-block orb rather than to no orb.
+
+                 THE NAME CAN ALSO PICK FRAMES, same syntax as Weapon
+                 Forge so there is one vocabulary across both mods:
+
+                   area_zero_particle_tuff        every frame
+                   area_zero_particle_tuff:2-6    frames 2 to 6
+                   area_zero_particle_tuff:8-0    REVERSED
+                   area_zero_particle_tuff:0,3,5  those three, in order
+                   area_zero_particle_tuff:4      one frozen frame
+
+                 Frame numbers are 0-based, and on a stock run the
+                 number IS the one in the sprite's name. A number
+                 outside the animation is reported and skipped.
+
+                 SPEED IS NOT IN THE NAME HERE - use "orbFps". Weapon
+                 Forge accepts an "@24" suffix because several of its
+                 sprite keys have no fps of their own; the orb does, so
+                 an "@" here warns and points at the key rather than
+                 being two ways to say one thing.
+    orbFps       animation speed, default 14.
+    orbScale     size multiplier, default 1. The tuff bubbles are
+                 particle art and small; try 1.5-2 if they read as
+                 specks.
+    orbSpeed     units per second, default 22.
+    orbArc       how much it SWOOPS instead of beelining, as a share of
+                 its speed thrown sideways at launch. Default 0.7; 0 is
+                 a straight line. Worth keeping above zero - a
+                 dead-straight line reads as a bullet being fired AT
+                 you, which is the one thing this must not look like.
+    orbSpin      degrees per second, default 0.
+    orbLifetime  seconds before an orb gives up, PAYS OUT ANYWAY and
+                 vanishes. Default 2.5. A backstop, not a dial.
+    orbColor     tint the bubble. Blank keeps the sprite's colours.
+    maxOrbs      most alive at once, default 14. A shotgun with eight
+                 pellets, or a beam threading a crowd, would otherwise
+                 be a firehose. OVER THE CAP THE HEALING IS GRANTED
+                 IMMEDIATELY rather than dropped.
+    sfx          plays when the health arrives. A game sound NAME
+                 from SOUNDS.txt, a sound id, or a custom name.
+
+  WITH WEAPON FORGE INSTALLED, IT OWNS THE LEECH
+  ----------------------------------------------
+
+  Both mods can leech, and a leech is a prefix/postfix pair on the
+  game's one damage method. Two of them would each measure the same hit
+  and each pay out - so a player with both mods would heal roughly twice
+  what they asked for and see two bubbles per hit. So there is exactly
+  one owner, the same bargain as crit and the mirror of the burn engine:
+
+     Weapon Forge installed  -> it owns the patch. This module's SHARE,
+                                FLAT amount and CAP are combined with
+                                the weapon's own; WHEN the heal lands,
+                                the orb's look and which pool refills
+                                come from that weapon's "leech" block
+                                (or its defaults). The log says so once.
+     Weapon Forge absent     -> this mod runs its own leech engine and
+                                everything above applies as written.
+
+  THE CAP CROSSES THE BRIDGE ON PURPOSE and it is the safety valve: the
+  TIGHTEST cap wins between the module and the weapon, so a cap you set
+  here is never overridden by a weapon whose author left it uncapped.
+  Same for perEnemyDelay, where the LONGEST wait wins.
+
+  Nothing is lost either way - with both mods, set the look on the
+  weapon and the numbers on the module.
+
+  ShipStatEffect { targetProperty, operation, deltaCalculationMode,
+                   value }
+     HOW THE SHIP HANDLES - the surface the game's own modules cannot
+     touch at all. Not one of its eleven effect classes references
+     ShipMovement or DamagableResource.
+
+       { "type": "dash", "targetProperty": "DashCooldown",
+         "value": -0.3 }
+
+     targetProperty:
+       MaxSpeed        top speed
+       Acceleration    how fast you get there
+       DashCost        fuel per dash
+       DashCooldown    seconds between dashes
+       DashDuration    how long a dash lasts
+       DashForce       the initial kick        (one-shot, 400)
+       DashPush        the sustained push      (whole dash, 500)
+       IFrames         the gap between hits that can damage you
+       FuelCost        fuel per second while flying
+       BoostFuelCost   fuel per second while sprinting
+       BoostDelay      how long you hold before a sprint starts
+       BoostKick       the SPRINT BURST multiplier   (x3)
+       BoostKickCap    the ceiling it can reach      (25)
+
+       --- THE SHIP'S OWN FIRE RESISTANCE ---
+       FireCooling     burn shed per second        (higher is better)
+       FireTickRate    SECONDS between burn ticks  (higher is better)
+       FireThreshold   burn needed to ignite       (higher is better)
+       FireDamage      damage per burn tick        (LOWER is better)
+       MaxBurn         how high burn can stack     (LOWER is better)
+       IgniteSpike     burn added on catching fire (LOWER is better)
+
+     Shortcut types: "speed", "engine", "dash", "iframes".
+
+     THE DASH HAS TWO FORCES, NOT ONE. DashForce is the one-shot impulse
+     at the instant the dash begins (400). DashPush is applied EVERY
+     frame for the whole DashDuration (500 over 0.07s). Lengthening
+     DashDuration makes DashPush matter more and DashForce matter less.
+
+     THE SPRINT KICK IS A MULTIPLY, NOT A SPEED, and this is the part
+     that surprises people. StartBoosting does:
+
+         magnitude = velocity.magnitude
+         if (magnitude < boostExtraSpeedLimit)
+             velocity = min(boostExtraSpeedLimit,
+                            magnitude * boostExtraSpeedMultiplier)
+                        * velocity.normalized
+
+     Three things follow, and the first is the one nobody guesses:
+
+       - A STANDING START GETS NO KICK AT ALL. Zero times three is
+         zero. The burst rewards sprinting while already moving, which
+         is why it reads as a gear change and not a launch.
+       - IT DOES NOTHING once you are at or above BoostKickCap, because
+         of the "<" guard. So raising BoostKick without raising
+         BoostKickCap buys you nothing above cap/multiplier - about 8.3
+         units/second at the factory values.
+       - It preserves DIRECTION, so it is purely a speed event.
+
+     The ship's numbers: multiplier 3, cap 25, cruising maxSpeed 12.5,
+     maxSpeedWhileBoosted 19. So a sprint from cruising speed asks for
+     37.5, is capped to 25, and drag then pulls you back to 19. The
+     burst is real and deliberately temporary.
+
+     BoostKick is FLOORED AT 1. Below that a sprint would BRAKE you,
+     and at 0 it would stop the ship dead the instant you hit sprint -
+     the game applies it as an outright velocity write, not a force. 1
+     already means "no kick", which is a fair downgrade to sell.
+
+     FIRE RESISTANCE IS A DIFFERENT THING FROM EVERY OTHER BURN FEATURE
+     IN THIS MOD. Those are about the burn you INFLICT. These six are
+     how fast YOU stop burning and how much it hurts while you do, and
+     nothing in the game's own module system touches them.
+
+     The ship's factory values, which are worth knowing before tuning:
+
+         fireThreshold 10   extraBurnLevelWhenCatchingFire 5
+         coolingSpeed 5     fireTickRate 1
+         fireDmgPerTick 1   maxBurnLevel 20
+
+     Read that as: burn stacks up to 20; you IGNITE above 10; igniting
+     instantly adds 5 more (so crossing 10 puts you at 15); you shed 5
+     a second; and while alight you take 1 damage a second. A single
+     ignition therefore burns for about a second - it is sustained
+     exposure that hurts, not one touch.
+
+     TAKE MaxBurn TO 10 OR BELOW AND THE SHIP CAN NEVER CATCH FIRE.
+     Burn is clamped to maxBurnLevel, so a ceiling at or under the
+     ignition threshold means the threshold is never crossed. That is
+     a real "asbestos hull" module rather than a bug, but it is total
+     immunity and worth knowing you have built one.
+
+     FireTickRate IS AN INTERVAL, NOT A RATE, whatever the name reads
+     like - it is the gap in seconds between damage ticks, so a bigger
+     number burns you LESS often. Floored at 0.02s, because 0 would
+     mean "tick every frame" - fifty times a second - which is the
+     opposite of what anyone setting it to zero was reaching for.
+
+     ONE MORE WRITER TO KNOW ABOUT. This mod's burn engine also writes
+     fireTickRate, every frame, from a prefix on
+     DamagableResource.Update. The two coordinate rather than fight: a
+     fire-resistance module OWNS the value, and the burn engine treats
+     it as the base it boosts from. Without that the module would
+     appear to do nothing at all.
+
+     THE FIRE STATS ARE RE-ASSERTED EVERY FRAME, deliberately, and the
+     other ship stats are not. Unit.CreateData() rebuilds
+     burnProperties from the prefab on spawn AND on continue, so a
+     value stamped once at install is silently reverted on reload -
+     the same trap that had minion colour and scale broken from the day
+     they shipped.
+
+     ON COSTS AND DELAYS, A NEGATIVE VALUE IS THE UPGRADE - DashCost,
+     DashCooldown, FuelCost, BoostFuelCost and BoostDelay are all
+     "less is better". The build log reminds you when you use one.
+
+     MaxSpeed and Acceleration MOVE THEIR BOOSTED TWINS TOO, in
+     proportion. This is not a nicety: ShipMovement.MaxSpeed is a
+     get-only property that returns maxSpeed OR maxSpeedWhileBoosted
+     depending on whether you are sprinting, so a module that changed
+     only one half would appear to stop working the moment you held the
+     dash button.
+
+     IFRAMES IS 0 ON EVERY DAMAGEABLE THING IN THE GAME, so any value
+     is a pure upgrade with no existing balance to preserve. It applies
+     to every DamagableResource on the ship, not just health, because a
+     unit has one per resource it can lose.
+
+     WHY THESE ARE SAFE TO REMOVE, which weapon stats get for free and
+     these do not: a weapon is rebuilt from its template whenever the
+     module cluster changes, so a weapon effect can write
+     "current + delta" and let the rebuild clean up. NOTHING rebuilds
+     ShipMovement - its fields are live and permanent. Writing
+     "current + delta" there would compound on every stat
+     recalculation and never come back when the module was removed. So
+     the mod captures the factory value once and RECOMPUTES the total
+     from it, which makes removal exact even with several modules on
+     the same stat, and makes a double recalculation harmless.
+
+  InvulnEffect { seconds }
+     MERCY INVINCIBILITY: total immunity for a moment after any hit.
+
+       { "type": "invuln", "seconds": 0.75 }
+
+     Not the same as IFrames above, though they look interchangeable:
+       IFrames  rate-limits damage to ONE resource pool
+       invuln   blocks EVERYTHING, on every pool, for the window
+     It uses the game's own switch (DamagableResource.damageBlockers),
+     not a mod-invented one.
+
+     IT DOES NOT STACK ACROSS MODULES. Two one-second modules give one
+     second, not two - the longest request wins. Immunity windows gain
+     value far faster than they add, and stacking is how three cheap
+     cards quietly become permanent invulnerability.
+
+  CellConvertEffect { into, convert, radius }
+     Aliases: "cellconvert", "terraform", "dig".
+
+     YOUR WEAPON REWRITES THE TERRAIN IT HITS.
+
+       { "type": "dig", "radius": 3 }
+       { "type": "terraform", "into": "Hazard", "convert": "Solid" }
+
+     into     what the terrain BECOMES. Defaults to "Fog Mist".
+              A SINGLE TYPE - it cannot be a list. One shot turns
+              terrain into ONE thing; that is the field's type in the
+              game, not a limit of this mod.
+     convert  which terrain it may eat. BLANK = every solid type.
+     radius   how big a patch, per hit. The Crawler Laser uses 4.
+
+     FOUR GROUP WORDS SAVE NAMING SIXTEEN THINGS. "convert" takes a
+     list, a single name, or one of:
+
+         "all"        every cell type (16)
+         "solid"      everything you cannot fly through (12)
+         "resources"  Tuff + Blob + Gold - A MINING MODULE
+         "soft"       Slime and the three Fogs
+
+     The same words work in Weapon Forge's "convertableCells", so
+     there is one vocabulary across both mods. The log prints the full
+     list it expanded to.
+
+     THE SIXTEEN CELL TYPES. The COLLIDER column is the one that
+     decides what the module feels like. You can drop the "CellType"
+     prefix - "Solid", "Fog Mist" and "Slime" all resolve.
+
+       SOLID - a wall you cannot fly through
+         Bark      burns 4s
+         Gold      the ore
+         Blob      burns 2s
+         Moss      burns 2s
+         Night     burns 3s
+         Shard
+         Solid     burns 15s - the most flammable thing in the game
+         Tuff
+         Panel
+         Obsidian
+         Mud
+         Hazard    solid AND 1 contact damage, 10 pushback
+
+       PASSABLE - you fly straight through
+         Slime          a trigger collider - passable goo
+         Fog Mist       no collider at all
+         Fog Musk       no collider at all
+         Fog Steam      no collider at all
+
+     SO THIS IS HOW YOU DIG: convert a solid type into a FOG and you
+     have cut a real tunnel. Point "into" at a solid type instead and
+     the module BUILDS walls.
+
+     "EMPTY" IS NOT ON THE LIST AND YOU DO NOT NEED IT. It is cell id 0
+     and a const on the class rather than an asset, so it cannot be
+     named - a Fog does the same job.
+
+     CAREFUL WITH HAZARD. Nothing in the game filters cell contact
+     damage by faction, so terrain you create will hurt YOU as happily
+     as anything else. That is exactly what the game's own Crawler
+     Laser does - ten types into Hazard at radius 4 - and it is the
+     only stock weapon that uses this feature at all.
+
+     BEAM-ONLY WITHOUT WEAPON FORGE, and that is the game's limit
+     rather than a choice: HitscanWeapon is the sole caller of
+     Level.ConvertCells, even though the field sits on every weapon.
+     Weapon Forge extends it to projectiles and lobbed shots. With that
+     mod absent this still works on beams, which is what the base game
+     does.
+
+     A type you leave out of "convert" is a type your weapon cannot get
+     through, which is a fair way to keep Obsidian meaningful.
+
+  AmmoEffect { trigger, seconds, infinite, refill, includeHealth,
+               resource }
+     Aliases: "infiniteammo", "freeammo", "reload".
+     (NOT "ammo" - that one already means "which resource this weapon
+     spends", on WeaponResourceEffect.)
+
+     FREE SHOTS, as a buff or as a passive.
+
+       { "type": "infiniteammo", "trigger": "kill", "seconds": 3 }
+       { "type": "infiniteammo", "trigger": "always" }
+       { "type": "reload", "trigger": "kill", "infinite": false,
+         "refill": true }
+
+     trigger    "kill" = a window after every kill (the buff shape).
+                "always" = passive, permanently on.
+     seconds    how long the window lasts. A series, so a level can buy
+                a longer buff. Ignored by "always".
+     infinite   default TRUE - shots cost nothing while it is open.
+     refill     top every AMMO tank up at the moment of the kill.
+                Instantaneous, so it pairs with a short window or with
+                none at all. "every kill reloads you" is a legitimate
+                and far tamer module than permanent free fire.
+     resource   optional - restrict to ONE resource, so a module can be
+                "infinite White" rather than infinite everything.
+
+     IT NEVER MAKES HEALTH INFINITE, AND THAT IS THE WHOLE DESIGN.
+     The obvious field, Unit.Data.HasInfiniteResource, is read by
+     Shooter.OwnerHasResource and looks perfect. But its setter does
+
+         foreach (ResourceTank t in GetAllTanks()) t.isInfinite = value
+
+     and ResourceTank.Value's setter is
+
+         if (this.isInfinite && this._value > value) return
+
+     - an infinite tank REFUSES TO GO DOWN. Health is a ResourceTank,
+     and DamagableResource.Damage is literally "tank.Value -= amount",
+     so that one flag makes the ship completely invulnerable. Shipping
+     the obvious implementation would have shipped god mode wearing an
+     infinite-ammo label.
+
+     So the flag is never touched. This sets isInfinite per TANK and
+     skips every pool a DamagableResource guards - the game's own
+     definition of "something you can lose", asked of the components
+     rather than hardcoded to Health. For real invulnerability use
+     "invuln" or "laststand"; both have cooldowns.
+
+     includeHealth  OFF BY DEFAULT AND WORTH LEAVING OFF. The game's
+                own RefillResources() fills every not-SHARED tank, and
+                MONEY IS THE ONLY SHARED RESOURCE IN THE GAME - so
+                health is in that list and a naive refill is a FULL
+                HEAL ON EVERY KILL. Turning this on gives you exactly
+                that, deliberately. The build log warns you.
+
+     Only tanks THIS module switched on are ever switched off, so two
+     ammo modules cannot cancel each other and the debug menu's own
+     infinite-resource toggle is never stomped.
+
+  StealthEffect { trigger, seconds, idleSeconds, revealOnFire,
+                  revealSeconds }
+     ENEMIES LITERALLY CANNOT SEE YOU. This is the game's own mechanic,
+     fully implemented and previously reachable only from the debug
+     menu: Vision.IsVisible is exactly
+         return !component.ComponentData.IsInvisible
+
+     And it does more than stop new aggro. AIAgent CLEARS AND REBUILDS
+     its visible-enemies list from Vision every update, so everything
+     currently hunting you drops you on its next pass. That pass is
+     0.25s on 66 of the 68 prefabs with a Vision, which is also why a
+     duration under about 0.3s will not register at all.
+
+       { "type": "stealth", "trigger": "dash", "seconds": 1.5 }
+
+     trigger:
+       "dash"    vanish for "seconds" on every dash - a blink
+       "idle"    GO TO GROUND: hidden once you have not fired for
+                 "idleSeconds". Needs no reveal rule of its own -
+                 firing un-hides you by construction
+       "sprint"  cloaked while you hold sprint. Self-limiting, since
+                 sprinting already burns fuel
+       "kill"    a window after each kill
+       "hit"     a window after taking damage - reposition instead of
+                 tanking
+       "always"  permanent, subject to revealOnFire
+
+     REVEALONFIRE DEFAULTS TRUE AND IT IS THE WHOLE BALANCE OF THIS.
+     Vision checks nothing except the flag, so shooting from stealth is
+     otherwise completely safe: a cloak without this is not a stealth
+     mechanic, it is an off switch for the enemy AI. Setting it false
+     is deliberate rope and the log says so.
+
+     Several stealth modules can be installed at once; if ANY of them
+     currently grants, you are hidden.
+
+  LastStandEffect { onThreshold, threshold, onKill, seconds, cooldown }
+     YOU CANNOT DIE FOR A MOMENT.
+
+       { "type": "lastStand", "threshold": 0.25, "seconds": 3,
+         "cooldown": 20 }
+
+     Uses DamagableResource.IsInvincible, and the name misleads, so be
+     precise: the game does
+         if (IsInvincible && tank.Value <= 0f)   -> floor the tank at 1
+     Damage still lands and the bar still drops. You simply cannot be
+     finished. So this is a SAFETY NET, not a shield - which is a
+     genuinely different card from "invuln" above even though the
+     titles sound the same.
+
+     onThreshold  arm when your LOWEST pool hits "threshold" (0.25 =
+                  a quarter). Checked across every pool you can lose,
+                  so a shield resource counts. On by default unless you
+                  asked for onKill instead.
+     onKill       also arm on a kill - turns a safety net into a reward
+                  for pushing forward. Both can be on.
+     cooldown     counted from when the window OPENS, so "3 seconds
+                  every 15" means what it says rather than 3 + 15.
+                  A cooldown of 0 is refused and reset to 15, because
+                  without one this is not a last stand, it is
+                  immortality.
+
 WEAPON effects (use with "target": "weapon"):
   ModifyWeaponProperty { targetProperty, operation, deltaCalculationMode,
                          value }
@@ -188,6 +938,77 @@ WEAPON effects (use with "target": "weapon"):
        "FromCurrent"  value * current stat
        Leave this on Constant unless you want the effect to scale with
        whatever other modules have already done.
+
+  ExtraWeaponStatEffect { targetProperty, operation,
+                          deltaCalculationMode, value }
+     The stats the game's own list above CANNOT REACH. Its
+     targetProperty is a fixed enum of twelve baked into the game's
+     assembly, and WeaponBase has 33 settable properties - so anything
+     outside those twelve needs this instead. Same operation and
+     deltaCalculationMode meanings, deliberately, so there is only one
+     model to learn.
+
+     targetProperty:
+       "PushForce"     how hard your shots SHOVE what they hit
+       "WarmupTime"    the minigun spin-up before a held weapon fires
+       "BarrelLength"  how far in front of the ship a shot is born
+
+     BARREL LENGTH IS SMALL EVERYWHERE EXCEPT A SHOTGUN, where it is
+     very real: every pellet spawns at the same point, so a longer
+     barrel pushes the whole cone forward and clear of your own hull.
+
+     Shortcut: "type": "pushforce", "warmuptime" or "barrel" picks the
+     stat for you, so the common case is one line:
+
+       { "type": "pushforce", "value": 60 }
+
+     PUSH IS NOT KNOCKBACK, and the game has both:
+       KnockbackForce  = the RECOIL on your own ship. It is one of the
+                         twelve above, on ModifyWeaponProperty.
+       PushForce       = the shove applied to WHAT YOU HIT. This one.
+     People usually mean PushForce when they say knockback.
+
+     TWO THINGS THAT WILL SURPRISE YOU ABOUT PUSH:
+
+     1. A PIERCING SHOT NEVER PUSHES AT ALL. The game returns out of
+        Projectile.OnObjectHit at the piercing branch, before the push
+        is applied. So this effect and a PierceCap module CANCEL EACH
+        OTHER OUT - the push simply stops happening, with nothing in the
+        log. The build log warns about it when you use push.
+     2. The shove fights the target's MASS and DAMPING, which vary
+        enormously (the ship is 1 x 0.5, a common Cross 5 x 6, a Queen
+        200 x 4). One number cannot feel the same on everything: a value
+        that sends a Cross flying barely nudges a Queen.
+
+     Stock weapons sit around 20-200 for push. For WarmupTime, NEGATIVE
+     is the useful direction - a faster ramp - and note warmup is inert
+     on gadget-fired weapons, which bypass the Shooter entirely.
+
+  WeaponResourceEffect { resource, free }
+     Changes WHICH RESOURCE the weapon spends - a Caps gun that runs on
+     Electron. A different kind of module from "+10% fire rate": it
+     changes what your build is made of, and frees the weapon from
+     competing with your others for the same tank.
+
+       { "type": "ammo", "resource": "Resource Electron" }
+
+     THE TRAP, and it fails silently. The game checks the tank before
+     every single shot:
+         OwnerHasResource = HasInfiniteResource || Cost == 0
+                            || GetResource(ResourceUsed) >= Cost
+     Point a weapon at a resource the ship has NO TANK OF and that check
+     never passes, so THE WEAPON SIMPLY WILL NOT FIRE - no error, no
+     log, looking exactly like the module broke the gun. Either pair
+     this with a ModifyResourceCapacity effect for the same resource, or
+     set
+
+       "free": true
+
+     which zeroes the weapon's cost so it never consults a tank at all.
+     That is the safe option, but "free ammo" is a far bigger balance
+     change than "different ammo", so it is off by default. The module
+     card names the resource precisely because it is the only place a
+     player can find out why their gun went quiet.
 
      WHY DAMAGE IS BLOCKED. It is a genuine bug in the game, not caution
      on our part. Eleven of the twelve stat appliers ASSIGN their result
@@ -271,11 +1092,25 @@ frame".)
  6. ICONS & COLOR
 ----------------------------------------------------------------
 
-Icons are module sprites named "HUD_GridTiles_NN". Handy ones:
+Icons are module sprites named "HUD_GridTiles_NN" or "HUD_Modules_NN".
+
+ALL 81 OF THEM ARE LISTED IN "MODULE ICONS.txt" next to this file,
+with which stock module uses each one - and "Module Icons.html" DRAWS
+them all at size, filters by name or by module, and copies a name when
+you click it. The number tells you nothing about the picture, so start
+there rather than guessing.
+
+Handy ones, for quick reference:
   Stat Up 12  Regen 17  Shield 34  Extra Projectile 10  Fire Rate 4
   Spread 5  Projectile Speed 15  Range 11  Burn 40  Explosion 39
   Spark 41  Power Core 18   Burst = "HUD_Modules_17"
 The Module Builder page has a dropdown for these.
+
+An icon cannot animate - it is assigned once and nothing ever ticks
+it - so naming an animation gets its first frame. You can pick WHICH
+frame though: "mysheet:3" takes frame 3. That works on the game's
+numbered sprite runs as well as your own sheets. Frame numbers are
+0-based, and on a stock run the number IS the one in the sprite name.
 
 color: a game ColorAsset name (ColorWhite / ColorOrange / ColorPurple
 / ColorBlue / ColorRed / ColorYellow / Color Tech / ColorPower) OR a
