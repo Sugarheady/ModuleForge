@@ -24,8 +24,28 @@ msbuild ModuleForge.sln -p:Configuration=Debug
 
 **There is no hot reload.** Files are read at startup, so every test is a full game restart.
 
-Logs: `BepInEx\LogOutput.log`, search `ModuleForge`. The burn ceiling lives in
-`BepInEx\config\com.sugarheady.moduleforge.cfg`.
+Logs: **`BepInEx\ModuleForge.log`** (the launch before: `ModuleForge.prev.log`). Since 2026-09-25
+`LogOutput.log` and the console keep only the plugin's own load lines plus a copy of every error. The
+burn ceiling lives in `BepInEx\config\com.sugarheady.moduleforge.cfg`.
+
+### The log file — `ModuleForgeLog`
+
+A deliberate copy of Weapon Forge's `ForgeLog` (duplicate by default — only the names differ; a fix
+to one is a lead in the other two, and Game Mode Forge carries a third).
+
+- **Every log source is `ModuleForgeLog.Source("ModuleForge.X")`, never `Logger.CreateLogSource`.**
+  In BepInEx 6.0.0-be.785 `CreateLogSource` is `new ManualLogSource` + `Logger.Sources.Add`, and that
+  Add is the only wire to the shared listeners. An unregistered source reaches only this class, which
+  writes the file and forwards Error/Fatal. `logfiletest.py` fails on a stray `CreateLogSource`.
+- **The plugin's own `Logger` is the one registered source**, and `ModuleForgeLog.Start` is the FIRST
+  line of `Awake` so its load lines are copied into the file too.
+- **It copies the game's own errors whose stack trace has a `ModuleForge.` frame** — BepInEx leaves
+  "Unity Log" out of LogOutput.log by default, so a throw out of one of our patches was in no file.
+  The match is a frame START, not a Contains: "GameModeForge." and "ModuleForge." overlap as text.
+- **Every failure falls back to LogOutput.log and says so**, and a relaunch is waited for (2s) before
+  deciding the game is running twice (`ModuleForge.2.log`).
+- `logfileprobe.py` compiles the shipped file against the real `BepInEx.Core.dll` and runs seven
+  launch scenarios. `[Logging] OwnLogFile = false` restores the old behaviour.
 
 ## Do not commit game code
 
@@ -66,6 +86,78 @@ is not. Keep that line.
 - `Module`'s constructor rolls `PowerLevel = Random.Range(powerLevel.Min, Max)` **per instance**, so
   two drops of the same module differ, and `ModulePickup` shows the rolled value on the ground.
 
+### `OnInstalled` IS NOT GATED ON POWER AND EVERY OTHER SEAM IS
+
+**This is the single most copyable mistake in the mod, because the wrong version works.** The three
+seams the game runs modules through all take `cluster.ConnectedAndPoweredModules`:
+
+```
+ModuleGrid.OnUpdate            -> ConnectedAndPoweredModules
+ModuleGrid.OnRecalculateStats  -> ConnectedAndPoweredModules
+WeaponFactory.Create           -> ConnectedAndPoweredModules
+```
+
+**`ModuleGrid.Install` does not.** It fires `ModuleInstalled` → `module.OnInstalled(unit)` for any
+module dropped anywhere in the grid, powered or not, connected or not. So **twelve** effects here
+registered themselves on placement and never asked again: an unpowered kill-reward module still paid
+out, an unpowered `ShipStatEffect` still moved the stat, unpowered pierce and burn-rate
+contributions still counted in their shared accumulators. Reported 2026-09-11 in one line:
+*"The modules in general need to be powered and connected to the grid to work otherwise they dont do
+anything."* He is describing the game, and he was right.
+
+**`ModuleForgeLive` is the one owner.** A postfix on **`Unit.Data.RecalculateStats(IModuleGrid)`** —
+the game's own "the grid changed" tick, and the only place that is handed both the unit and the grid
+— sweeps the effects this mod registered on that unit and tells any whose live-ness changed. Each
+effect then runs `Engage` / `Disengage` (or `Push` / `Release`), which are the **same** two methods
+its install and uninstall call, so there is exactly one owner per action and nothing new to keep in
+step. Five things are load-bearing:
+
+- **Read `ConnectedAndPoweredModules`; do NOT count callbacks.** The tempting version is "an effect
+  that got `OnRecalculateUnitStats` this generation is live". It is wrong and would have shipped
+  quietly: `ModuleGrid.OnRecalculateStats` has a branch that, for a cluster whose `MainModule` is a
+  `SpawnMinionModule`, calls the **main module only and skips every augmentation in that cluster**.
+  Every module augmenting a drone gadget would have read as dead while the game ran its `OnUpdate`
+  normally.
+- **Postfix, not prefix** — the live modules must have re-pushed before the dead ones are withdrawn.
+- **Interface types only** (`IModuleGrid` / `IModuleCluster`), or it cannot answer for a minion.
+  `SimpleModuleCluster.ConnectedAndPoweredModules` returns everything it holds — no power geometry —
+  so a minion's modules are always live, which is right.
+- **When it cannot tell, the answer is LIVE.** This gate can only ever take a working module away
+  from someone, so every uncertainty resolves to leaving it alone: no grid, no `Module`, a throw, or
+  **no cluster anywhere with a main module** (the restore path calls `RecalculateStats` early). That
+  last guard is deliberately *not* "the powered set is empty" — a cluster root need not sit in its
+  own powered slots, so an empty set is a plausible reading of a real ship and would have argued for
+  the wrong answer.
+- **`Reset()` belongs in `BurnResetPatch.ResetAll`** for the same reason everything else there does:
+  modules are not uninstalled on teardown, so the tracked list would carry a run's worth of dead
+  effects into the next one forever. An untracked effect is simply ungated, which is the safe state.
+
+**The corroboration is in the game's own UI, and it is worth knowing about:**
+`HoveredModuleInfo` computes `isInstalled` as `grid.Contains(module) && grid.IsPoweredAndConnected(pos)`
+and hands it to `GetPropertyList`, and `ModuleGridWidget` calls
+`ModuleIconWidget.DisplayState(connected, powered, ...)`. So the game already tells the player twice.
+**No card line was added for this** — a stock module says nothing either, and making ours louder than
+stock would be the inconsistency, not the fix.
+
+`modlivetest.py` enforces the rule by **derivation rather than by a list**: every `ModuleEffect`
+subclass in the mod is classified from its own source, an effect that overrides `OnInstalled` must
+implement `ModuleForgeLive.IGated` and Track/Untrack, and one that does not must be pure
+`IWeaponModifier` (already gated by the cluster walk — `CellConvertEffect`, `ExtraWeaponStatEffect`,
+`WeaponResourceEffect`). **The thirteenth effect is what this test exists for**, not the twelve.
+
+> **A REGISTRATION SEAM AND AN EXECUTION SEAM CAN HAVE DIFFERENT PRECONDITIONS, and the registration
+> one is always the laxer.** Same family as the build-time-vs-live split that armed `contactDamage`
+> for the whole session in Weapon Forge: "this thing exists" and "this thing should act" are two
+> questions, and answering the first is not answering the second.
+
+**The twin was audited and deliberately NOT changed**, which is the rule working rather than being
+skipped. Weapon Forge has exactly two `ModuleEffect` subclasses (`ForgeBurnRateEffect`,
+`ForgeBurnColorEffect`) in the identical register-in-`OnInstalled` shape — but they ride the **weapon
+module itself**, a cluster's MainModule, and `ModuleSlotWeaponHolder.RefreshWeapon` builds the gun
+from `cluster.MainModule` with **no power test at all**. Gating them would make a weapon's burn
+setting stricter than the weapon. Full reasoning, including the order-dependent edge it would have
+opened, is in that repo's CLAUDE.md under "Modules & levels".
+
 ### Kills, and ship-vs-weapon scope for free
 
 `Unit.RegisterKill` fires a **public** `KilledAnotherUnit` event and is called from **only three
@@ -79,6 +171,72 @@ for hitscan, and taken from the owning projectile for explosions.
 > called is in a weapon grid (and can capture *which* weapon); one whose `Modify` never comes is on the
 > ship. `KillRewardEffect` uses exactly that to make "only this weapon's kills" versus "any weapon's
 > kills" free. Reuse the trick rather than adding a target field.
+
+> **★ BUT "NEVER CALLED" MEANS "EVERY WEAPON *THIS SHIP* CARRIES", NOT "EVERY WEAPON IN THE GAME"
+> — and for six effects it meant the second, until R19.** Crit, execute, grow, leech, slow and
+> windup each keep a GLOBAL bucket for a ship-grid module (a null weapon key), and each resolved it
+> against whatever weapon had just fired. **An enemy's gun is a weapon.** So a grow module swelled
+> enemy bullets to x3.5 (test 243), a windup module made enemies fire faster the longer they held on
+> and posted one HUD line per enemy meter — the chirp storm of test 246 — and the four with a VICTIM
+> guard ("never touches your own side") were guarding the wrong direction: to an enemy gun the
+> player *is* the other side, so an enemy shot could slow you, crit you, leech off you, and with an
+> execute module installed finish you under 20% health.
+>
+> **★ AND THE FLOOD SURVIVED THE SCOPE FIX, because it had a second cause** (R19 246/274, "spamming
+> like crazy ... filling the whole left side of my screen", on the player's own guns only). In
+> STEPPED mode the fraction reads 0 until the first step, and for that whole stretch `Announce`
+> posted a "WOUND UP +0%" line and `Apply` then withdrew and CLEARED it in the same frame - a new
+> row and a new chirp every frame, twice per trigger pull. Weapon Forge's `spinUp`, the feature
+> this was ported FROM, has the exact guard (`Say` shows nothing at 0) and never flooded.
+> **The port kept the shape and dropped the line that made the shape safe** - the same lesson as
+> [copying a feature copies its bugs], pointing the other way: copying can also drop its fixes.
+>
+> **`ModuleForgeScope` is the one owner.** Every effect that can feed a global bucket records its
+> owner (`OnInstalled` is handed exactly the unit whose grid holds it — `ModuleGridOwner.Data` passes
+> its own `Unit.Data`) and every resolver asks `ModuleForgeScope.Applies(key, weapon)`: is this
+> weapon's `Owner.ComponentData` that unit? One reference comparison. Held in a
+> `ConditionalWeakTable`, so no run-entry reset can wipe the owner of a module that is still
+> installed. An unknown owner, or a weapon with no owner, matches **nobody** — a module that does
+> nothing is a bug report, a module firing on enemy guns is a death.
+>
+> **Weapon Forge had the identical bucket** — `ForgeCrit` / `ForgeLeech` `_global`, which is where a
+> ship-grid crit or leech module lands when both mods are installed. It has a mirror,
+> `WeaponForge.ForgeModuleScope`, and the two bridges tell it the owner by type name
+> (`ForgeInterop.TellWeaponForgeOwner`) before a null-weapon push.
+>
+> Consequence worth knowing: a drone GADGET's own minions no longer get your ship-grid modules (their
+> weapon's owner is the minion, which carries its own grid). Wingman copies still do — they are
+> equipped to the ship. `scopetest.py` finds the registries **by shape**, so a seventh global
+> bucket fails until it is scoped.
+
+> **AND `"target"` IS PURELY PRESENTATIONAL — it does NOT decide where a module can be placed, which
+> is what three of this project's own documents said.** Asked 2026-09-11 whether the on-kill heat
+> relief could work on weapon upgrade modules "if you haven't done that already": it already did, and
+> the question was fair because the how-to said *"a module attaches to ONE of two places, chosen by
+> target"* and the builder page's caption read *"where the module attaches"*. Measured off the assets
+> and the decompile rather than reasoned:
+>
+> - **`ModuleSlotType Normal.compatibleModuleTypes` is `{ Passive, WeaponAugmentation, PowerCore,
+>   Booster }`**, and `ModuleGrid.GetSlotType` returns `Normal` for every cell except six
+>   (`shipGridPosition`, the two weapon mounts, three ability slots). So both module types fit
+>   anywhere an ordinary module fits.
+> - **Nothing on the cluster path looks at `moduleType`.** `RefreshConnectedModules` collects by
+>   adjacency (`GridHelper.CollectConnectedModulesRecursive`), `RefreshPoweredModules` filters by
+>   power, and `WeaponFactory.Create` takes `cluster.ConnectedAndPoweredModules` whole.
+>   `ModuleGridWidget` only calls `IsCompatible` for highlighting special slots and for gamepad
+>   slot-hunting on `isMain` modules — and **neither Passive nor WeaponAugmentation is `isMain`**.
+> - **The two shells are identical apart from `moduleType` and `color`** — same empty `powerCore`,
+>   same `powerLevel` 0/0, same `canBeBoosted`.
+>
+> What `moduleType` actually buys: the word `HoveredModuleInfo` prints at the top of the card
+> (`displayName` — **UPGRADES** vs **WEAPON MODS**), the shop section and `orderInShop`, and the icon
+> background sprite. Where a module *acts* is the player's choice at the grid, which is exactly what
+> makes the scoping trick above work from either target.
+>
+> **The lesson is not about modules.** A field whose name implies a constraint gets documented as
+> enforcing one, and then nobody tests the constraint because the docs settle it. Same shape as the
+> `lootFrom` note further down: a written-down limitation stops being read as a claim. When a doc
+> says a value restricts something, find the line that does the restricting.
 
 Two traps found building it:
 
@@ -148,6 +306,34 @@ can emit reaches a cast that throws — *including in code that only logs*. Seri
 2026-08-20: amount, buffDamage, buffFireRate, burn, chance, clearBurn, damageAmount, damageIncrement,
 falloff, pierceCap, ticksPerSecond, value.
 
+### Diagnostics have to survive a second run, and this mod's did not
+
+Four log gates here (`_saidLookClash` twice, `_saidNoImpact`, `_warned`) are one-shot bools, so a
+warning already said this session stays silent for the rest of it — and the thing each one
+describes is per RUN. `ModuleForgeDiagnosticGates` sweeps them by naming convention at both run
+entry points, a deliberate copy of Weapon Forge's version for the same reason as the buff HUD and
+the unit tint: each mod must work with the other absent, and resetting your own diagnostics is not
+a decoder worth a reflection bridge.
+
+Two details carried across from that copy rather than rediscovered:
+
+- **`HashSet<T>` does not implement the non-generic `System.Collections.ICollection`.** Weapon
+  Forge's first cut filtered on exactly that and silently dropped every keyed gate while reporting
+  a plausible total. Test the capability you are about to use — a public parameterless
+  `Clear()` — which is also the method the reset then calls, so acceptance and action cannot
+  disagree.
+- **The log line prints the split, not one total**, because a count is only evidence when it can be
+  checked against a count derived another way.
+
+**And `BurnResetPatch` held its reset list TWICE, byte for byte, one copy per entry point** —
+the same shape Weapon Forge deduplicated a week earlier and nobody thought to check here. Anything
+added to a duplicated list is one paste from being half-wired, and a half-wired reset fails only on
+the entry point nobody tested. One `ResetAll()` now, in both mods.
+
+> **Auditing one mod and not its twin is how a fix ends up half applied.** These two repos
+> deliberately duplicate rather than depend on each other, which means a bug found in one is a
+> lead to check in the other — not a bug that was only ever in one place.
+
 ### Plugin load order — this mod loads FIRST
 
 BepInEx loads Module Forge **before** Weapon Forge, so at `Awake` time Weapon Forge's types genuinely
@@ -155,6 +341,24 @@ do not exist yet. Any cross-mod check has to be **deferred** (the first `ShipHud
 good point), and it must look the type up **silently** — `AccessTools.TypeByName` logs a warning when
 the type is absent, and "the other mod is not installed" is a completely normal state. Scan
 `AppDomain.CurrentDomain.GetAssemblies()` instead.
+
+### Execute stacking, and why the common case stays one pass (R20 close)
+
+His design, 2026-09-29: *"it has the base 20% ... and a second value option that increases that
+cap"*. `stackPercent` / `stackFlat` are added for every copy of the **same module file** past the
+first (`ModuleForgeExecute.Groups`: group = `Module.Data.name`, base = the strongest copy, the
+tightest boss guard wins, percent clamped to 1). Different files still answer "strongest wins".
+**`ShouldFinish` runs on every damage call in the game**, so while no installed contribution
+stacks (`_anyStacks`, recomputed in `Refresh`) it takes the old allocation-free loop; only a
+stacking install pays for grouping. The card shows the stack being carried (`CopiesOn`).
+
+### Windup says why it stopped (R20 246)
+
+*"never gets to 100%"* could not be sourced — the meter reaches 1 after `windUpTime` of held
+trigger. So `ModuleForgeWound` logs, once per gun per run, why a held trigger stopped winding (the
+gun could not pay for its next shot, or the Shooter was blocked) and when a wind-up reaches FULL.
+His other complaint, the 33% jumps, was **my test file**: R19_Windup.json used `"ramp": "stepped"`.
+The default is smooth.
 
 ### The status feed is not an upsert
 
@@ -223,7 +427,19 @@ That's stock behaviour for every module, not a mod bug — don't go hunting for 
 
 ### Sprites and icons
 
-- Stock icons are `HUD_GridTiles_NN`, tinted by `module.color` — in *both* the places an icon is drawn.
+- Stock icons are `HUD_GridTiles_0`..`_44` and `HUD_Modules_0`..`_35`, tinted by `module.color` — in
+  *both* the places an icon is drawn. **They are NOT zero-padded**, and writing `HUD_GridTiles_NN`
+  (which five places across the two repos did) teaches a two-digit form that resolves to nothing.
+  R17's log caught it: `Icon 'HUD_GridTiles_07' is neither a game sprite nor ...`, printed by a
+  warning that then restated the convention which caused it.
+  > **A diagnostic that restates a convention is teaching it.** If the convention is wrong, the
+  > warning is not the safety net — it is the bug, in the most authoritative voice the mod has.
+  `ForgeAssets.PaddedRetry` (and `ForgeSpriteLibrary.PaddedIconRetry`, its twin) accept the padded
+  form after the exact name misses, resolve it, and name the real asset.
+  > **⚠ AND UNTIL R20'S CLOSE THIS ONE NEVER RAN.** `StockIcon` returned null for any name with no
+  > `:` BEFORE reaching `PaddedRetry` — so a plain `HUD_GridTiles_07`, the exact case the retry was
+  > written for, still warned on every launch (R20's log). The Weapon Forge twin was right. Fixed
+  > 2026-09-29; `iconwindupr20test.py` pins the branch. **Read what RETURNS above your line.**
 - This mod has **no sprite import pipeline of its own** — that lives in Weapon Forge
   (`ForgeSpriteLibrary`). `ForgeAssets.ResolveIcon` tries the game's assets, then borrows Weapon Forge's
   loader through `ForgeInterop.TryResolveIcon`, so one `sprites` folder serves both mods. Stock name
@@ -235,7 +451,7 @@ That's stock behaviour for every module, not a mod bug — don't go hunting for 
   art imported at the projectile default comes out double size on the ground while looking perfect on
   the card. `ResolveIconSprite` rebuilds to the stock footprint to hide this.
 - **An icon name takes the `:frames` suffix, and `ForgeAssets.StockIcon` is why.** `ResolveIcon` used
-  to hand the whole string to `FindAsset`, so `"HUD_GridTiles_04:2"` matched no asset and fell through
+  to hand the whole string to `FindAsset`, so `"HUD_GridTiles_4:2"` matched no asset and fell through
   to the "not a sprite in the game" warning — loud, but with the suffix as an unstated reason. It now
   tries the exact name **first** (so nothing already written changes, and an unsuffixed icon never pays
   for a run scan) and only then splits and resolves a frame. The custom half comes free from Weapon
@@ -266,6 +482,19 @@ groups from a `LootSelector.SelectLoot` prefix (hooking the roll guarantees the 
   appending a new `DropTableItem` — additive, so the crate keeps its normal contents. Grafting is
   explicit opt-in only; `"all"` must never trigger it, or any loot module would silently rewrite two
   stock crates for the whole run.
+- **A CONFIRMATION PRINTED AFTER A REFUSAL READS AS THE REFUSAL BEING OVERRULED.** Straight out of
+  his R15 log:
+  ```
+  [Warning] PiercingTest1.json: "lootFrom" was set but this module is not loot-enabled, so it can
+            never drop.
+  [Info   ] PiercingTest1.json: drops only from DropGroup Modules Crate Caps
+  ```
+  `ResolveLootPools` warned and then carried on to print its summary unconditionally. The second
+  line is the more confident of the two and it is the one a reader believes - so he came back asking
+  whether crate targeting had ever been built, having tested it against a file the mod had already
+  refused. The summary says which of the two states the file is in now. **Weapon Forge had the
+  identical code and the identical bug**, which is the duplicate-by-design rule working as intended:
+  a bug found in one is a lead in the other.
 - `DropTableItem` is a **struct with private `[SerializeField]` fields** — box it, fill by reflection,
   unbox into the list.
 - Every module zeroes its own drop weight once you own one (`repeatedDropChanceMultiplyer`, 0 on ~120
@@ -289,6 +518,29 @@ JSON by `deepSet`.
 > **The effect list filters on `group === target`**, so an effect valid on *both* grids needs the
 > `"both"` group and the `fitsTarget` helper — a group value the filter does not recognise puts the
 > effect in **neither** dropdown, silently. That is how `KillRewardEffect` first shipped.
+
+> **A DERIVED LIST IS ONLY RIGHT IF IT IS DERIVED FROM THE SAME SOURCE THE DECISION IS MADE FROM.**
+> `EffectBuilder.KnownEffects()` builds the "the effect types available are..." message by scanning
+> for `ModuleEffect` subclasses instead of hand-listing them, on the reasoning that a hand-written
+> list would drift. Sound, and it advertised **five names the switch would reject** - found
+> 2026-09-08 by reading the message in a real log, not by any test:
+> - **Three were the house rule below simply not kept.** `BurnRateModuleEffect`,
+>   `PhasingModuleEffect` and `PierceModuleEffect` are reached by the friendlier `burnrate` /
+>   `phasing` / `piercecap`, and nobody went back for the canonical spelling - so the comment
+>   asserting "a class name is always an accepted spelling" was false for exactly the three effects
+>   whose class name nothing else uses.
+> - **Two were ANOTHER MOD'S.** It walked `AppDomain.CurrentDomain.GetAssemblies()`, so with Weapon
+>   Forge installed it listed `ForgeBurnColorEffect` and `ForgeBurnRateEffect` - real `ModuleEffect`
+>   subclasses this switch has never heard of.
+>
+> **And scoping it to this mod's assembly was worse than the bug.** That was the first fix and a
+> test caught it: **most of the effect types the switch builds are the GAME's own `ModuleEffect`
+> subclasses** (`AddBurnEffect`, `ModifyWeaponProperty`, `AddShieldEffect` and nine more), so a
+> this-assembly-only scan silently dropped twelve legitimate names from the very message that exists
+> to list them. The boundary is **two** assemblies: the game's, identified as the one declaring
+> `ModuleEffect` itself rather than by name, and this one. `effectnamestest.py` pins all of it -
+> every class name resolves, the page's keys all resolve, and the scan reaches both assemblies and
+> no others.
 
 > **Every `case` in `EffectBuilder`'s switch must include the effect's own CLASS NAME, lowercased.**
 > The page emits `"type": "KillRewardEffect"` — the class name — and the switch accepted only
@@ -358,13 +610,40 @@ The two mods cooperate but must stay independently buildable and runnable:
     `WeaponBase`, so two weapons sharing one template with different modules would overwrite each
     other's cap on every hit. Same reason `GrantedFor` clones per weapon instead of sharing one
     `Defaults` — a Config carries per-weapon runtime state (the budget, the per-enemy timers).
+- **OVERHEAT IS WEAPON FORGE'S, AND `coolHeat` DOES NOT GROW A LOCAL FALLBACK.** His R15 ask was
+  *"can you add the onkill effect for moduleforge to cool for overheat feature? maybe add a check to
+  make sure both mods are in-place before implementing it?"* - so `KillRewardEffect.coolHeat` reaches
+  `WeaponForge.ForgeHeat.CoolOn(unit, weapon, amount)` by reflection and does nothing without it.
+  The check is **structural rather than a flag**: `overheat` is a per-weapon block from a Weapon
+  Forge weapon *file*, so with that mod absent there is no meter in existence to act on. Crit and
+  leech duplicate here precisely because a module must still work alone; this one must not, because
+  duplicating it would mean two engines owning one meter and there is no standalone case to serve.
+  Two details:
+  - **The lookup latches on SUCCESS only.** This mod loads BEFORE Weapon Forge, so "the type is not
+    there" has a different answer depending on when it is asked, and caching the first answer
+    forever is exactly the trap the load-order note above exists for. A failure is retried once per
+    run (`ForgeInterop.ResetHeatLookup` from `BurnResetPatch.ResetAll`), so it costs one assembly
+    scan per run rather than one per kill. Module building runs from a game-side startup postfix,
+    long after the chainloader has finished - which makes the first answer already right, and makes
+    that a happy accident rather than something to depend on.
+  - **It is said at BUILD time and again on the first kill.** The build-time line can name the file;
+    the runtime one covers "Weapon Forge is here but this gun has no overheat block", which is not
+    knowable from the module.
 - **`ForgeAssets.ResolveSpriteFrames` is STOCK-ONLY on purpose**, unlike everything else art-shaped
   here. Its one caller is the standalone leech orb, which by definition only runs with Weapon Forge
   absent — so reaching for the borrowed loader would be dead code, and `TryResolveIcon` rebuilds at the
   module-icon footprint (24x24 at PPU 40), the wrong size for anything that is not an icon.
 - **`ModuleForgeUnitTint` is a deliberate copy of `ForgeUnitTint`**, same call as the buff HUD: a
   display layer is not a decoder worth a dependency, and the crit tint has to work with the other mod
-  absent. The two are never live at once (Weapon Forge owns the crit patch when present), so they
+  absent.
+  **And the shared claim that `replace` "brightens as readily as it darkens" was wrong in both
+  copies' docs.** `SpriteRenderer.color` is itself a *vertex multiply in the shader*, so the pixel is
+  always `texture x colour` and the most any tint can do is `texel x yours` - in either mode.
+  `Unit Fly Regular`'s body art averages **40/255 luminance** against 76 for its beak (same shared
+  `SpriteLitAA` material), which is exactly why a flash reads on the mouth and barely on the body.
+  What `replace` buys is the layer arithmetic, not a higher ceiling. Corrected in all four docs;
+  the honest advice is a saturated colour or `colorPulse`, since motion is visible at any brightness.
+  The two are never live at once (Weapon Forge owns the crit patch when present), so they
   cannot fight. Keep the two scoping rules identical in both — they encode which renderers a unit's
   prefab means to be recoloured, which is a fact about the **game**, not about either mod.
 - This mod **borrows Weapon Forge's audio pipeline** when present, so there is one `sounds` folder and
@@ -374,7 +653,7 @@ The two mods cooperate but must stay independently buildable and runnable:
   `ResolveIcon` and `ResolveColor` already draw:** custom-*file* loading is Weapon Forge's pipeline
   and is borrowed; looking a name up in an asset the **game** owns is not a decoder and has to work
   standalone. `Sfx` carries both a `guid` and a readable hierarchical `name` (`Cells/Fuel`,
-  `UI/Click`), and until 2026-09-02 **both mods matched on `guid` only** - so all 259 of the game's
+  `UI/OK`), and until 2026-09-02 **both mods matched on `guid` only** - so all 259 of the game's
   sounds were reachable solely by typing a 36-character guid, with nothing anywhere mapping a name to
   one. `ForgeAssets.StockSound` closes it; **SOUNDS.txt** in both repos is the generated list. Keep it
   in step with `WeaponForge.ForgeSfxRegistry.StockGuid`, including the empty-entry warning: **70 of
@@ -430,3 +709,76 @@ The two mods cooperate but must stay independently buildable and runnable:
 - Check whether a game field already does the job before writing code.
 - Assume any class instance you hand over is kept by reference — assign a fresh one rather than mutating
   a shared stock object.
+
+
+### Buying a Forge MODULE with INGREDIENTS, not just money
+
+Built 2026-09-20, both mods, R19 tests 269-270. **The entire mechanism was already in the game,
+including the UI** - this change only stops flattening a list that was always a list.
+
+- **`ShopItemConfig.price` is a `List<Price>`**, and a `Price` is either an `Ingredient` (held in the
+  run's `Vault`) or a `Resource` (a tank on the ship). `Shop` deducts EVERY entry on purchase and
+  `CanAfford` requires all of them.
+- **`priceIncrement` is a second list**, and `ShopItem.IncreasePrice` matches each increment to the
+  price of the **same currency** - so escalation is per-currency for free.
+- **`ShopItemWidget` already does `foreach (Price price in shopItem.price)`** and instantiates one
+  `PriceWidget` each, which picks `ingredient.iconSmall` or `resource.icon` and reddens the number
+  when you cannot afford it. **A multi-currency price renders correctly with no UI work**, which is
+  normally the expensive half.
+- **`unlockRequirements` is a `List<Ingredient>`** that `RunData` reads as an "ever owned" gate -
+  the item is not in the shop at all until you have held those. Seven stock items use it.
+
+Keys: `shopCost` / `shopCostIncrement` (objects keyed by currency name) and `shopUnlock` (a name or
+a list), in both mods. `shopPrice` is unchanged and ingredients stack ON TOP of it, which is the
+stock convention: **all 62 entries in the game's own shop table carry a money price**, and 25 of
+them carry ingredients as well.
+
+> **⚠ AN AMOUNT BELOW 1 IS A CRASH, NOT A NO-OP, AND THE TWO HALVES OF THE GAME DISAGREE ABOUT IT.**
+> `Price.CanAfford` asks `unit.GetResource(r)`, which returns **0** for a resource the ship has no
+> tank for. `Shop`'s purchase line is `this.ship.Unit.GetTank(price.resource).Value -= amount` with
+> **no null check**, and `Unit.Data.GetTank` is `resourceTanks.GetValueOrDefault(resource)`. Those
+> disagree in exactly one place: an amount of 0 makes `0 >= 0` true, the check passes, and the buy
+> dereferences null **inside the game's own Shop**. `Price.AmountFloored` is `FloorToInt`, so 0.5
+> arrives as 0 too. Both mods refuse a floored amount below 1.
+> **A check and its action can disagree, and the gap is where the crash lives** - the same asymmetry
+> as `DamagableResource.Damage` guarding with `HasTank` while the `.Tank` property does not.
+
+> **★ THE ID AND THE NAME ON SCREEN DIFFER FOR TWO OF THE NINE INGREDIENTS**, and they are the two a
+> person is most likely to type: **`Coral` displays as "Fiber"** and **`Shell` as "Generator"**. The
+> lookup takes id, `displayName` and asset name. Same family as the 259 sounds reachable only by
+> GUID: **a lookup that cannot see the name on screen fails for the only spelling anyone will try.**
+
+**Four of the nine are not in circulation.** Measured by reference count across the exported assets:
+the five the stock shop trades in (Chip, Coral, Gland, Powerstar, Shell) are each referenced 3-17
+times, while **Bond, Ex and Face are referenced once - their own registry - and Strange Ball not at
+all.** A price in one can never be paid, so it is **warned about and kept** rather than refused (a
+game update could start dropping them, and this project reports a questionable file rather than
+silently dropping it).
+
+**⚠ AN INCREMENT NEEDS AN ITEM THAT COMES BACK.** `Shop` removes a bought item from the list unless
+`ModuleData.repeatInShop` is set, and `IncreasePrice` runs on what is left - so a rising price on a
+one-shot item is a number nothing ever reads, printed in the build log as though it applied. Both
+mods now turn repeat on when any increment is asked for. **Module Forge had this since it shipped
+and it asked about the MONEY increment only** - correct for the only escalation that existed when it
+was written, and a silent no-op the moment an ingredient could escalate too.
+
+**Weapon Forge gained `shopPriceIncrement` in the same change.** It had been writing a hard-coded
+`amount = 0f`, so a Forge WEAPON could never get more expensive while a Forge MODULE could. Found by
+reading the twin, per duplicate-by-default.
+
+**Two stock-game oddities found in passing and not acted on:** `SimpleModuleGrid.RestoreFromMemento`
+restores `Active3` from `memento.active2`, and `ShopItemsConfig` pulls its CSV from a published
+Google Sheets URL at runtime. (`SimpleModuleGrid` is the ENEMY/minion grid, not the player's.)
+
+**R19's close (2026-09-27), both shop halves:**
+
+- **`config.Get(id)` answers NULL for an item added this pass** - `ShopItemsConfig`'s dictionary is
+  rebuilt by `config.Initialize()` only after the loop. So every Forge module's summary line said
+  "for free" and the "hidden until you have found" half never printed. `EnsureConfig` hands the
+  config back now. Weapon Forge had the identical read and paid more for it (its repeat-in-shop
+  switch hung off the same null, so TOLLGATE vanished after one purchase). Duplicate-by-default
+  working as intended: one bug, found once, fixed twice.
+- **A gated item gets the price and NOT the pool** (270, STARGATE CORE on sale at the first station
+  with no Powerstar). `RunData.RegisterShopUnlock` draws from the per-tier groups and never reads
+  `unlockRequirements`; the gate lives only in `Shop` -> `AddShopItemsWhereRequirementsMet`.
+

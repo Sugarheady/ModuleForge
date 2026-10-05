@@ -71,10 +71,20 @@
         <em>name shown on the module card in-game</em></label>
       <label class="field"><span>target</span>
         <select id="f-target" data-path="target">
-          <option value="ship">ship body (stat / regen / shield)</option>
-          <option value="weapon">weapon (fire rate, projectiles...)</option>
+          <option value="ship">ship body &mdash; card reads UPGRADES</option>
+          <option value="weapon">weapon &mdash; card reads WEAPON MODS</option>
         </select>
-        <em>where the module attaches</em></label>
+        <em>WHICH KIND OF CARD THIS IS, AND NOT WHERE YOU CAN PUT IT &mdash; that
+          was the old wording here and it was wrong. It picks the stock module
+          cloned as the shell, and the shell's type decides the word at the top of
+          the module card (UPGRADES / WEAPON MODS), which shop section lists it, and
+          the background art behind the icon. Nothing else: the two shells are
+          otherwise identical. Every ordinary grid cell accepts BOTH types, so a
+          "ship" module can be connected into a weapon's cluster and vice versa
+          &mdash; and for an effect whose behaviour depends on the grid (on kill,
+          crit, leech) the grid you SLOT it in is the only thing that counts. This
+          box decides the shelf; you decide the socket. It also filters the effect
+          list below, so pick it first.</em></label>
       <label class="field"><span>icon (pick a module icon)</span>
         <select id="f-icon-preset">
           <option value="">-- keep default --</option>
@@ -214,6 +224,94 @@
       <label class="field" id="f-shopunlock-field"><span>shop unlock level</span>
         <input type="number" step="1" data-path="shopUnlockLevel" placeholder="1">
         <em>stations to unlock first (0 = first shop)</em></label>
+      <div class="note" style="margin:10px 0 4px">
+        <b>PAY WITH INGREDIENTS AS WELL AS MONEY.</b> The five below are the
+        ones the game actually trades in, and they stack <i>on top of</i>
+        <code>shopPrice</code> &mdash; which is what every one of the 62 stock shop
+        items does. For an ingredient-only cost set <code>shopPrice</code> to
+        <code>0</code>. The shop draws one icon per currency by itself and
+        reddens the ones you cannot afford, so this needs no UI of its own.
+        <br><br><b>Two of the names differ from what the game stores them
+        under</b> &mdash; Fiber is <code>Coral</code> and Generator is
+        <code>Shell</code> &mdash; so either spelling is accepted. Hand-edited files
+        may also name any ship <b>resource</b> (Tech, Purple&hellip;), and the four
+        ingredients nothing in the game drops (Bond, Ex, Face, Strange Ball),
+        which are warned about rather than refused.
+        <br><br><b>Whole units only.</b> A cost below 1 is dropped and said so:
+        the game's purchase code subtracts without checking the ship can hold
+        the currency, and a zero slips past the affordability check that would
+        otherwise stop it.
+      </div>
+
+      <label class="field"><span>shopCost.Chip</span>
+        <input type="number" step="1" data-path="shopCost.Chip"
+               placeholder="0">
+        <em>how many <b>Chip</b> on top of the money price. Stored in the
+            game as <code>Chip</code>.</em></label>
+      <label class="field"><span>shopCost.Fiber</span>
+        <input type="number" step="1" data-path="shopCost.Fiber"
+               placeholder="0">
+        <em>how many <b>Fiber</b> on top of the money price. Stored in the
+            game as <code>Coral</code>.</em></label>
+      <label class="field"><span>shopCost.Gland</span>
+        <input type="number" step="1" data-path="shopCost.Gland"
+               placeholder="0">
+        <em>how many <b>Gland</b> on top of the money price. Stored in the
+            game as <code>Gland</code>.</em></label>
+      <label class="field"><span>shopCost.Powerstar</span>
+        <input type="number" step="1" data-path="shopCost.Powerstar"
+               placeholder="0">
+        <em>how many <b>Powerstar</b> on top of the money price. Stored in the
+            game as <code>Powerstar</code>.</em></label>
+      <label class="field"><span>shopCost.Generator</span>
+        <input type="number" step="1" data-path="shopCost.Generator"
+               placeholder="0">
+        <em>how many <b>Generator</b> on top of the money price. Stored in the
+            game as <code>Shell</code>.</em></label>
+
+      <label class="field"><span>shopCostIncrement.Chip</span>
+        <input type="number" step="1" data-path="shopCostIncrement.Chip"
+               placeholder="0">
+        <em>added to the Chip cost every time it is bought (0 = flat).</em></label>
+      <label class="field"><span>shopCostIncrement.Fiber</span>
+        <input type="number" step="1" data-path="shopCostIncrement.Fiber"
+               placeholder="0">
+        <em>added to the Fiber cost every time it is bought (0 = flat).</em></label>
+      <label class="field"><span>shopCostIncrement.Gland</span>
+        <input type="number" step="1" data-path="shopCostIncrement.Gland"
+               placeholder="0">
+        <em>added to the Gland cost every time it is bought (0 = flat).</em></label>
+      <label class="field"><span>shopCostIncrement.Powerstar</span>
+        <input type="number" step="1" data-path="shopCostIncrement.Powerstar"
+               placeholder="0">
+        <em>added to the Powerstar cost every time it is bought (0 = flat).</em></label>
+      <label class="field"><span>shopCostIncrement.Generator</span>
+        <input type="number" step="1" data-path="shopCostIncrement.Generator"
+               placeholder="0">
+        <em>added to the Generator cost every time it is bought (0 = flat).</em></label>
+
+      <label class="field"><span>shopUnlock &mdash; hide until found <span class="tag">optional</span></span>
+        <select class="preset" data-preset-for="shopUnlock">
+          <option value="">(fill the field below)</option>
+          <option value="Chip">Chip</option>
+          <option value="Fiber">Fiber</option>
+          <option value="Gland">Gland</option>
+          <option value="Powerstar">Powerstar</option>
+          <option value="Generator">Generator</option>
+        </select>
+        <em>fills the field below. For more than one, hand-edit the saved JSON
+            into a list: <code>"shopUnlock": ["Chip", "Powerstar"]</code>.</em></label>
+      <label class="field"><span>shopUnlock</span>
+        <input type="text" data-path="shopUnlock" placeholder="">
+        <em><b>Keeps this out of the shop entirely until you have picked up that
+            ingredient at least once in the run.</b> The game's own gate, used
+            by seven stock items.
+            <br><br><b>It is deliberately separate from the price.</b> The stock
+            items always pair the two &mdash; the Fiber item is hidden until you
+            find Fiber &mdash; but they answer different questions, so you can gate
+            on one thing and charge another. Leave blank and it is on sale from
+            its unlock level like everything else, showing a red price you
+            cannot pay yet.</em></label>
       <label class="field"><span>repeatInShop</span>
         <select data-path="repeatInShop" data-type="bool">
           <option value="">keep default</option>
@@ -292,7 +390,17 @@
   <section>
     <h2>Effects</h2>
     <p class="field"><em id="eff-hint">Effects for the selected target. Mix positive and
-      negative freely (e.g. +1 projectile and -20% fire rate).</em></p>
+      negative freely (e.g. +1 projectile and -20% fire rate).<br><br>
+      <b>EVERY EFFECT BELOW NEEDS THE CARD TO BE CONNECTED AND POWERED</b>, exactly as
+      the game's own modules do &mdash; a card lying loose in the grid, or connected but
+      outside its cluster's power core, does nothing at all, and starts working the moment
+      you plug it in. The grid already shows you which is which: an unpowered or
+      unconnected icon is drawn differently, and the game's own hover card treats such a
+      module as not installed. Until 2026-09-11 Module Forge did not honour that &mdash; an
+      effect registered itself when the card was placed and never checked again, so an
+      unpowered module kept paying out. If one of yours ever appears to do nothing,
+      check the power before you check the file, and look in the log for the line naming
+      the card.</em></p>
     <div id="effects-list"></div>
     <button type="button" class="secondary addbtn" id="add-effect">+ ADD EFFECT</button>
   </section>
@@ -400,12 +508,221 @@
         {k:"asPickup",t:"bool",d:"drop a pickup on the corpse to fly through, instead of granting it instantly. The game ships eight pickup prefabs - White, Caps, Tech, Purple, Red and three Money - and RED IS HEALTH, so \"Health\" gets the right art. A resource with no prefab of its own borrows the nearest one, and if that is impossible the resource is paid into the tank instead, so the reward always pays."},
         {k:"chance",t:"number",s:true,ph:"1",d:"0-1 chance to trigger. Per level so a level can buy reliability instead of size"},
         {k:"maxPerSecond",t:"number",ph:"0",d:"cap on how much RESOURCE this grants per second. 0 = uncapped. One explosion can kill a dozen enemies at once, which is what this is for. Changed 2026-08-18: it used to count payouts, so \"amount 3, maxPerSecond 4\" meant 4 kills a second rather than 4 fuel a second - retune existing files. A module granting no resource still counts payouts"},
-        {k:"clearBurn",t:"number",s:true,ph:"0",d:"burn level removed from YOUR ship per kill - the only payout that can save you mid-fire"},
+        {k:"clearBurn",t:"number",s:true,ph:"0",d:"burn level removed from YOUR ship per kill - as in your ship is ON FIRE, not the overheat meter (that is coolHeat, below). The only payout that can save you mid-fire"},
+        {k:"coolHeat",t:"number",s:true,ph:"0",
+          d:"heat removed from a weapon's OVERHEAT meter per kill, in the same units as that block's \"max\" and \"perShot\". NEEDS WEAPON FORGE: \"overheat\" is a per-weapon block from a Weapon Forge weapon file, and Module Forge deliberately has no heat system of its own to fall back on - one owner per mechanic. Without it this key warns at build time and does nothing, and the rest of the module still works. A kill that drops the meter below \"ventTo\" also ENDS a vent lockout on the next frame, so a gun that would jam can be kept firing by connecting with it. Scope is the usual rule: in a WEAPON's grid only that weapon's meter cools, on the SHIP grid whichever gun scored the kill - and that is decided by where you SLOT the card in game, not by \"target\" above, which only chooses which shelf the card is filed on"},
         {k:"buffDuration",t:"number",ph:"0",d:"seconds the buff below lasts. 0 = no buff"},
         {k:"buffFireRate",t:"number",s:true,ph:"0",d:"fire rate bonus as a fraction - 0.25 = +25%"},
         {k:"buffDamage",t:"number",s:true,ph:"0",d:"damage bonus as a fraction"},
         {k:"buffMaxStacks",t:"number",ph:"1",d:"how many kills can stack the buff. 1 = each kill just refreshes it"},
-        {k:"buffIndicator",t:"text",ph:"",d:"SHOWS THE BUFF ON SCREEN while it lasts, wearing this module's own icon and colour. \"feed\" = the game's own status line (the one that says FUEL LOW), \"icons\" = a row beside the minion counter, \"both\", or \"off\". Leave blank to follow the global default in BepInEx/config/com.sugarheady.moduleforge.cfg, where you also pick what the label reads. It appears on the module card too"} ] },
+        {k:"buffIndicator",t:"text",ph:"",d:"SHOWS THE BUFF ON SCREEN while it lasts, wearing this module's own icon and colour. \"feed\" = the game's own status line (the one that says FUEL LOW), \"icons\" = a row beside the minion counter, \"both\", or \"off\". Leave blank to follow the global default in BepInEx/config/com.sugarheady.moduleforge.cfg, where you also pick what the label reads. It appears on the module card too"},
+        {k:"gas.damagePerSecond",t:"number",ph:"0",
+          d:"LEAVES A GAS CLOUD ON EVERY CORPSE, and this is its damage per second. Set this or any other gas payload below to switch the cloud on - a colour and a puff count describe a cloud but do not make one, and the build log says so. THE CLOUD IS THE MODULE'S, NOT A WEAPON'S: unlike Weapon Forge, where \"onKill\": { \"gas\": true } is a switch pointing at that weapon's own gas block, here this block IS the description, because a module has no weapon file to point at. It works with Weapon Forge absent. Damage is the only payload that scales and the only one that touches the fireproof Tablet enemy"},
+        {k:"gas.burnPerSecond",t:"number",ph:"0",
+          d:"sets things inside the cloud ON FIRE, using the game's own burn. Cheap, stacks with everything and shows the burning visual for free - but the game's burn damage is FLAT (1/sec while alight however high the level goes), so this buys DURATION rather than intensity. Pair it with damagePerSecond if you want the cloud to scale"},
+        {k:"gas.duration",t:"number",ph:"4",
+          d:"seconds each cloud lives. The single most important number here after the payload: a 4-second cloud on every corpse in a busy room is a very different weapon from a 1-second one"},
+        {k:"gas.radius",t:"number",ph:"1.6",
+          d:"starting radius in world units. The game runs at 20 pixels per world unit, so 1.6 is about a ship and a half across"},
+        {k:"gas.grow",t:"bool",
+          d:"DEFAULT TRUE. The cloud swells from \"radius\" to \"growTo\" over \"growTime\" and thins out, which reads most like real gas. Off makes it stall at one size and sit there - a marker rather than a bloom. Setting growTo SMALLER than radius makes it shrink instead, which is a real effect and is warned about in case it was a typo"},
+        {k:"gas.growTo",t:"number",ph:"3.2",d:"radius at the end of growTime, when \"grow\" is on"},
+        {k:"gas.growTime",t:"number",ph:"1.2",d:"seconds to swell from radius to growTo"},
+        {k:"gas.slow",t:"number",ph:"0",
+          d:"fraction of velocity bled off per second inside the cloud, 0-1. The game ships a DragCellBehaviour for exactly this and never switched it on anywhere. Good on a cloud with little damage - a tar pit that holds a crowd still for your actual gun"},
+        {k:"gas.push",t:"number",ph:"0",
+          d:"outward shove per second. NEGATIVE PULLS INWARD, which is the more interesting half - a corpse that sucks the rest of the room into the gas"},
+        {k:"gas.max",t:"number",ph:"24",
+          d:"how many clouds THIS MODULE may have alive at once; the oldest FADES to make room rather than vanishing. 0 = unlimited and the log warns you. The budget belongs to the module rather than to each card, so two copies of the same module share one allowance instead of doubling it"},
+        {k:"gas.chains",t:"bool",
+          d:"DEFAULT TRUE. A kill scored BY A CLOUD leaves another cloud, so a packed room chains through itself. It reads like a runaway and is not one: every enemy dies exactly once and one death pays out once, so the clouds a fight can make are capped by how many things are in it - it walks through a crowd and stops. Set false for one cloud per kill you scored yourself. The module card says which, because a room that keeps smoking after you stopped firing is the one setting a player can see and cannot explain"},
+        {k:"gas.tickRate",t:"number",ph:"0.25",
+          d:"seconds between applications. NOT a strength knob - damagePerSecond means per second whatever this is. Each application drives a hit flash, a hit sound and the aggro event, so a tiny value is loud rather than strong. 0.25 is what the game's own beams use. Overlapping clouds from ONE module deliberately do not multiply damage; two different gas modules still stack with each other"},
+        {k:"gas.hitPlayer",t:"bool",
+          d:"let this module's own clouds damage YOU as well. Off by default, the same call as the gravity well's pullPlayer: a payload that can kill its owner should be a decision. NOTE \"extinguish\" reaches you either way, because putting your own fire out is the whole point of an extinguisher gas"},
+        {k:"gas.hitEnemies",t:"bool",
+          d:"DEFAULT TRUE. Off with extinguish on is a pure support cloud that only ever helps"},
+        {k:"gas.extinguish",t:"number",ph:"0",
+          d:"burn level removed per second from UNITS inside - your ship included, whatever hitPlayer says. Enough of this and the cloud is a fire extinguisher rather than a weapon, which can save you as readily as it hurts them"},
+        {k:"gas.igniteTerrain",t:"number",ph:"0",
+          d:"burn level ADDED per second to terrain inside the cloud. The game only ever ignites ground on a projectile COLLISION, so a cloud hanging in the air has no other route to it - this is the key that makes a corpse set the room alight"},
+        {k:"gas.extinguishTerrain",t:"number",ph:"0",
+          d:"burn level removed per second from burning TERRAIN. CALIBRATE THIS OR IT DOES NOTHING VISIBLE: cell fire thresholds are not normalised, and CellType_Solid - the main terrain - ignites at 45 and is re-lit by every burning neighbour each frame, while Slime is 1, Tuff 1.3 and Moss 2.5. So 6 douses moss and can never beat rock. Use about 120 if you meant to put out stone. The build log warns below 45"},
+        {k:"gas.color",t:"text",ph:"#8CF266 or ColorCaps",
+          d:"the cloud's colour - a game colour name or #hex. The alpha matters as much as the hue: the default is about 50% so the cloud reads as gas rather than as paint"},
+        {k:"gas.puffs",t:"number",ph:"5",
+          d:"sprites drawn per cloud. More reads as thicker gas and this is the main cost knob - with max 24 and puffs 5 that is 120 sprites at full budget. They sit on two alternating rings so the middle is not hollow"},
+        {k:"gas.swirl",t:"number",ph:"25",d:"how fast the puffs churn, in degrees per second"},
+        {k:"gas.damageType",t:"text",ph:"(the killing weapon's)",
+          d:"LEAVE BLANK ALMOST ALWAYS. Blank means the cloud inherits the element of whichever gun scored the kill, so it is resisted and coloured like that weapon - which is what keeps ONE ship-grid module sensible across every weapon you carry, including anything an adaptive damage type has just changed. It is resolved per cloud, so two clouds from one module can carry different elements. Name one only when the module is the source of the element rather than the gun - a poison core that stays poison whatever is bolted to it"},
+        {k:"gas.sprite",t:"text",ph:"(a soft blob)",
+          d:"GAME SPRITES ONLY, and blank is the right answer for nearly every cloud - the default is a generated soft radial blob, generated rather than borrowed because every stock particle sprite is packed tight in the shared atlas and its neighbours bleed in when it is scaled up. Custom PNGs live in Weapon Forge's sprites folder and are NOT read here: that loader rebuilds what it returns at the module-icon footprint (24x24 at PPU 40), which is the wrong size for a gas puff. A multi-frame name only ANIMATES if you ask with a frame range or an @ - 'area_zero_particle_tuff:0-8' animates, the bare name does not - so nothing already written starts moving on the next launch"},
+        {k:"gas.spriteFps",t:"number",ph:"12",d:"animation speed, and only for a sprite name that asked to animate"},
+        {k:"gas.sfx",t:"text",ph:"",
+          d:"a sound as each cloud appears. Use the READABLE NAME of any of the game's own sounds - all 259 are in SOUNDS.txt next to this mod, and 70 of them are declared empty and will be silent. Custom sounds live in Weapon Forge's sounds folder and only resolve with that mod installed. REMEMBER THIS PLAYS ONCE PER CORPSE: with chains on and a crowded room that is a lot of one sound"} ] },
+    "ContactDamageEffect": { group:"both", label:"Contact damage (your SHIP hurts what it touches)",
+      params:[
+        {k:"damage",t:"number",s:true,ph:"3",
+          d:"FLAT damage per target you touch, matching every stock Hazard in the game (a Maggot's beak is a flat 3). THIS ONE IS SHIP-ONLY AND WORKS THE SAME IN EITHER GRID, unlike every other effect here - the thing being armed is your hull, and there is one hull however many guns are bolted to it, so \"only this weapon's hull is spiky\" has no meaning. The card says so. THE GAME HAS NO PLAYER CONTACT DAMAGE AT ALL: the ship's own ImpactDamage is SELF damage and is only switched on while you sprint, so this is genuinely new rather than a tweak"},
+        {k:"damageType",t:"resource",
+          d:"which damage type the ram deals. LEAVE IT BLANK and it uses Health, which is a real default rather than a silent failure: a contact hit has NO WEAPON to inherit an element from the way a projectile does, and the game refuses damage with no type WITHOUT SAYING SO. That exact gap cost two test rounds on the weapon side - \"they bump into each other and doesnt seem to hurt one another\""},
+        {k:"scaleBySpeed",t:"bool",
+          d:"damage from HOW FAST YOU WERE GOING instead of the flat number, which turns this from \"touching things hurts them\" into \"ramming does\". The flat \"damage\" value is ignored in this mode"},
+        {k:"damagePerSpeed",t:"number",ph:"1",d:"damage per unit of speed above minSpeed, when scaleBySpeed is on"},
+        {k:"minSpeed",t:"number",ph:"6",d:"the speed you have to beat before a touch hurts anything at all. This is what makes it a ram rather than a permanent aura"},
+        {k:"maxDamage",t:"number",ph:"999",d:"ceiling on the speed-scaled damage"},
+        {k:"push",t:"number",ph:"0",d:"shove the thing you hit, along your direction of travel"},
+        {k:"recoil",t:"number",ph:"0",d:"and bounce YOUR SHIP backwards, exactly as ChargerHead recoils off what it bites. Without some of this a shoved enemy ploughs away and the impact reads as nothing having happened to you"},
+        {k:"repeatDelay",t:"number",ph:"0.3",d:"seconds before the SAME target can be hit again, so ploughing through a crowd hits each of them once rather than the first one repeatedly. The stock ChargerHeads use 0.3 and 0.5"},
+        {k:"detect",t:"select",opts:["","swept","collision"],
+          d:"HOW CONTACT IS NOTICED, and the wrong answer here fails only on your hardest hits. SWEPT (the default) casts along where your ship will be before the next physics step - ChargerHead's own method. COLLISION uses the stock Hazard's callbacks. EVERY unit in this game uses DISCRETE collision detection on a 0.02s step, so anything moving faster than about 50 units/s skips a 1-unit object between steps - and a boosting ship is that fast. So \"collision\" misses exactly the impacts a ram is for, which reads as the feature being unreliable rather than as a setting. Use it only to compare the two"},
+        {k:"radius",t:"number",ph:"0",
+          d:"how wide the contact check is. 0 takes it from your ship's OWN collider, which is almost always right and means the number does not have to be looked up - the build log prints what it resolved to"},
+        {k:"whileBoosting",t:"bool",
+          d:"ARM IT ONLY WHILE YOU ARE BOOSTING, which is the more interesting design and is the game's own precedent - the ship's ImpactDamage is enabled by SetBoosted and disabled the rest of the time. A dash costs fuel, so a boost-gated ram is a decision rather than a passive. Off (the default) makes the module a permanent hull spike"},
+        {k:"ignoreSelfDamage",t:"bool",
+          d:"SUPPRESS YOUR SHIP'S OWN CRASH DAMAGE while this module is installed. Worth knowing why it exists: the ship's ImpactDamage hurts YOU on a hard impact and the game enables it exactly while you boost - so a module that rewards ramming, used the way it wants to be used, hurts its owner. This disables that one component rather than granting invulnerability, and RESTORES it when you pull the card. Off by default, because taking the crash damage is an honest trade"},
+        {k:"tint",t:"text",ph:"#ff8844 or ColorCaps",
+          d:"a colour held on your ship while the module is live, so a spiked hull looks like one. Goes through the tint owner on its own \"contact\" layer, so it composes with a crit flash instead of one restoring over the other"},
+        {k:"tintPulse",t:"number",ph:"0",d:"throb the tint this many times a second. 0 = steady"},
+        {k:"tintStrength",t:"number",ph:"1",d:"0 to 1, how hard the colour comes through"},
+        {k:"tintMode",t:"select",opts:["", "multiply", "replace"],
+          d:"multiply (the default) can only DARKEN; replace stops your colour compounding with whatever is already there. Neither can brighten dark art - a sprite's colour is a vertex multiply in the shader"} ] },
+    "ExecuteEffect": { group:"both", label:"Execute (finish anything left under a threshold)",
+      params:[
+        {k:"percent",t:"number",s:true,ph:"0.15",
+          d:"FRACTION of the victim's own health pool. 0.15 finishes anything your hit leaves below 15%. WRITE IT AS A FRACTION - a value above 1 is read as a percent and converted, with a warning, because \"percent\": 20 would mean \"below 2000% health\" and delete everything you touched. WHICH GRID DECIDES THE SCOPE and you get it free: in a WEAPON's grid only that gun executes; on the SHIP grid every weapon does. The card says which. Per level, so a level can widen the threshold - the dial worth scaling"},
+        {k:"flat",t:"number",s:true,ph:"0",
+          d:"ABSOLUTE health instead of a share. Whichever of the two is satisfied FIRST wins, so one card can say \"under 15% OR under 20 health\" and catch the chaff and the big one. Leave at 0 to use percent alone"},
+        {k:"stackPercent",t:"number",ph:"0",
+          d:"WHAT A SECOND COPY OF THIS MODULE ADDS. Each copy of this same module past the first adds this to percent - 0.2 with stackPercent 0.1 is 20% for one card, 30% for two, 40% for three. A FRACTION like percent (a value above 1 is read as a percent). 0 = copies do not stack and the strongest one counts, which is how every file without this key reads. Only copies of THIS file stack - a different execute module still counts on its own. The card shows the stack you are carrying"},
+        {k:"stackFlat",t:"number",ph:"0",
+          d:"the same idea for flat: each extra copy adds this much health to the flat threshold. 0 = no stacking"},
+        {k:"maxTargetHealth",t:"number",ph:"0",
+          d:"THE BOSS GUARD, and it matters more than it looks. Skip anything whose health POOL is bigger than this. 0 = no limit, and the build log warns you - because a 15% execute on a 2000-health boss is 300 free damage in a single hit, which is a different module than the finisher you thought you were making. NOT per level on purpose: a cap that moves with level is a cap that quietly stops protecting you at the level you were relying on it"},
+        {k:"color",t:"text",ph:"#ff4d4d or ColorCaps",
+          d:"a brief tint on whatever gets executed - a game colour name or #hex. THE GAME ANNOUNCES NOTHING on its own: there are no floating damage numbers anywhere, so without a cue an execute is invisible and reads as the enemy simply dying. Goes through the tint owner on its own \"execute\" layer, so an execute flash and a crit flash on the same frame compose instead of one restoring over the other"},
+        {k:"colorSeconds",t:"number",ph:"0.25",d:"how long that tint lasts. Floored at 0.05"},
+        {k:"colorPulse",t:"number",ph:"0",d:"throb the tint this many times a second instead of holding it steady. 0 = steady, which is right for a flash this short"},
+        {k:"tintStrength",t:"number",ph:"1",
+          d:"0 to 1, how hard the colour comes through. Worth turning down when several effects tint the same unit, since multiply layers compound into something very dark. Either spelling works (tintStrength or colorStrength)"},
+        {k:"tintMode",t:"select",opts:["", "multiply", "replace"],
+          d:"MULTIPLY (the default) can only DARKEN - the sprite's colour is multiplied by yours, so a pale flash over a dark enemy barely registers. REPLACE stops your colour compounding with whatever is already there. NEITHER CAN BRIGHTEN DARK ART: a sprite's colour is a vertex multiply in the shader, so the most any tint can do is texel x yours. Pick a saturated colour, or use colorPulse - motion is visible at any brightness"},
+        {k:"sfx",t:"text",ph:"Explosion3",
+          d:"a sound when something is executed. Use the READABLE NAME of any of the game's own sounds - all 259 are listed in SOUNDS.txt next to this mod, and 70 of them are declared empty and will be silent. Custom sounds live in Weapon Forge's sounds folder and only resolve with that mod installed"} ] },
+    "GrowEffect": { group:"both", label:"Grow (your shots change size as they travel)",
+      params:[
+        {k:"from",t:"number",s:true,ph:"0.4",
+          d:"STARTING size as a multiplier of the shot's normal size, so 1 is unchanged. 0.4 launches at under half size. WHICH GRID DECIDES THE SCOPE: in a WEAPON's grid only that gun's shots grow; on the SHIP grid every weapon's do. Per level, so a level can buy a bigger swing"},
+        {k:"to",t:"number",s:true,ph:"3",
+          d:"size at the end of the ramp. Setting this BELOW \"from\" shrinks instead - a fat slug that tapers to nothing is a real weapon, not a mistake, and the card says SHRINKS when you do it"},
+        {k:"span",t:"number",ph:"0",
+          d:"how far (world units) or how long (seconds, with overTime on) the ramp takes. LEAVE AT 0 for the usual answer: each shot borrows its OWN range or lifetime, so it peaks exactly as it runs out whatever gun the module is beside - which is what you want from a module, since it has no idea what it will be slotted next to. NOTE a lobbed shot's range is inert in this game (the engine computes a time from it once and never enforces it), so a distance ramp on a grenade falls back to 10 units"},
+        {k:"overTime",t:"bool",
+          d:"measure the ramp in SECONDS ALIVE instead of DISTANCE TRAVELLED. Distance (the default) is what \"grows as it flies\" usually means and is the one that looks right on a fast shot; time is the one you want on something that hovers, arcs or slows down"},
+        {k:"hitbox",t:"bool",
+          d:"DEFAULT TRUE, and this is the switch that decides whether this is a weapon change or a paint job. The game rebuilds each shot's collision sweep from its Radius EVERY frame, so growing that number grows the real damage volume - what you see and what hits are the same value. Off makes the growth purely cosmetic. CANNOT BE HONOURED ON A LOBBED OR ROCKET WEAPON: those collide with a real Collider2D that scales with the sprite, so there is no separate radius to hold still and the hitbox grows regardless. The build log says so rather than pretending"},
+        {k:"curve",t:"number",ph:"1",
+          d:"shape of the ramp. 1 = steady. ABOVE 1 stays small and then swells late, which is the dramatic one - 3 means it is still near its starting size for most of the flight and blows up at the end. BELOW 1 swells fast and then eases off"},
+        {k:"clamp",t:"bool",
+          d:"DEFAULT TRUE - stop at \"to\". Off lets the shot keep growing past it for as long as it lives, which on a long-lived or slow shot gets very large; that is the point, but it is worth knowing before you fire it indoors"} ] },
+    "WindupEffect": { group:"both", label:"Windup (hold the trigger and the gun gets better)",
+      params:[
+        {k:"windUpTime",t:"number",s:true,ph:"1.5",
+          d:"SECONDS OF SUSTAINED FIRE to reach full. What counts as firing is the game's own definition: the trigger is down, you can afford the shots, and nothing is blocking the gun - so an empty gun does not wind up, and a jam or a stun costs you the wind-up you had. WHICH GRID DECIDES THE SCOPE: in a WEAPON's grid only that gun winds up; on the SHIP grid every weapon does. Per level - and like slow's amount, THE PER-LEVEL BOX WANTS A NEGATIVE NUMBER here, since getting there faster is a smaller number. -1 or -2 is fine: the time walks down a step per level, is FLOORED AT 0 (it never goes negative), and at 0 the gun is fully wound from the first shot. The build log works out which level that happens at and says so, because an ordinary card like 2s with -1 per level reaches it at level 3 and a BoosterCore can get you there. ★ NOT called \"spinUp\": that word is already taken in this mod for the game's flat warmupTime, and writing it gets you that instead (with a warning). Weapon Forge calls this same feature spinUp"},
+        {k:"windDownTime",t:"number",ph:"1",
+          d:"seconds to fall back to nothing once you stop. The rewards are withdrawn as it falls, so the gun is handed back gradually rather than snapping. Pulling the module out of the grid also runs this wind-down rather than cutting instantly"},
+        {k:"grace",t:"number",ph:"0.25",
+          d:"seconds off the trigger before the wind-down even starts — the trigger-discipline knob. Without it, tapping would keep the bonus for free; with it too high, nothing is ever lost"},
+        {k:"ramp",t:"select",opts:["","smooth","stepped","click"],
+          d:"HOW THE REWARD ARRIVES. smooth (default) is better every frame. stepped awards it in whole stages, each one announced by stepSfx — the one to pick if you want the player to feel a threshold. click is smooth but holds the cue back so that reaching FULL is a moment you can hear"},
+        {k:"steps",t:"int",ph:"3",d:"how many stages, in stepped mode. 1 behaves exactly like smooth and the build log says so"},
+        {k:"rate",t:"bool",d:"DEFAULT ON — the headline reward. The game recomputes the gap between shots FRESH every frame, so raising the rate mid-hold shortens the gap you are already waiting through; there is nothing to re-arm and no lag"},
+        {k:"fireRateAtFull",t:"number",ph:"2",d:"the multiplier at full wind-up. 2 is double"},
+        {k:"accuracy",t:"bool",
+          d:"DEFAULT ON — tightens the random scatter (angleVariance). ★ MOST STOCK WEAPONS SHIP THAT AT ZERO (Popper, Shotgun, Bolt, Worm), so on those this has nothing to remove and you will see no change; the build log says so. A shotgun's fan is \"spread\", which is a different field and is left alone unless you ask"},
+        {k:"accuracyAtFull",t:"number",ph:"1",d:"the FRACTION OF THE SCATTER REMOVED, so 1 is pinpoint and 0.5 halves it. Expressed that way round because \"how much better does it get\" is the question you are actually asking"},
+        {k:"spreadAtFull",t:"number",ph:"1",d:"multiplier on the DELIBERATE fan. Left at 1 on purpose — tightening a shotgun's spread to nothing turns it into a slug gun, which is a fine weapon and a terrible surprise"},
+        {k:"damage",t:"bool",d:"raise damage as it winds up"},
+        {k:"damageAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"pellets",t:"bool",
+          d:"more projectiles per shot. Rounded, and the weapon's visuals are rebuilt on every whole-number change — necessary rather than tidy: a BEAM weapon indexes its visual list with no bounds check every frame the barrel moves, so a count that rose behind its back throws sixty times a second"},
+        {k:"pelletsAtFull",t:"number",ph:"2",d:"the multiplier at full"},
+        {k:"cheaper",t:"bool",d:"each shot costs less resource as it winds up"},
+        {k:"costAtFull",t:"number",ph:"0.5",d:"the multiplier at full. 0.5 is half price"},
+        {k:"speed",t:"bool",d:"faster projectiles"},
+        {k:"speedAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"range",t:"bool",d:"longer range"},
+        {k:"rangeAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"size",t:"bool",d:"bigger projectiles — and a bigger HITBOX, since the game rebuilds each shot's collision sweep from that radius. On a beam it widens the ray instead"},
+        {k:"sizeAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"burst",t:"bool",d:"longer bursts per trigger pull"},
+        {k:"burstAtFull",t:"number",ph:"2",d:"the multiplier on burst SIZE at full. Rounded, and floored at 1 — a burst of 0 is a gun that fires nothing"},
+        {k:"burstDelayAtFull",t:"number",ph:"1",d:"the multiplier on the gap between burst shots. Below 1 tightens the burst"},
+        {k:"burn",t:"bool",d:"hotter burn on hit. Both ends of the weapon's burn range scale together"},
+        {k:"burnAtFull",t:"number",ph:"2",d:"the multiplier at full"},
+        {k:"explosion",t:"bool",d:"bigger blasts — radius AND damage, by the same multiplier. Does nothing on a weapon with no explosion of its own"},
+        {k:"explosionAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"push",t:"bool",d:"shots shove harder, and the gun kicks harder"},
+        {k:"pushAtFull",t:"number",ph:"2",d:"the multiplier on the shot's push force at full"},
+        {k:"knockbackAtFull",t:"number",ph:"1",d:"the multiplier on YOUR OWN recoil at full. Left at 1, because being shoved backwards harder is a cost rather than a reward unless you meant it"},
+        {k:"warmup",t:"bool",d:"shrink the game's own minigun-style warmup delay as you wind up. Mostly useful on a weapon that has one"},
+        {k:"warmupAtFull",t:"number",ph:"0",d:"the warmup at full, as a multiplier of the weapon's own. 0 removes the gate entirely"},
+        {k:"lifetime",t:"bool",d:"shots live longer"},
+        {k:"lifetimeAtFull",t:"number",ph:"1.5",d:"the multiplier at full"},
+        {k:"showOnHud",t:"bool",
+          d:"DEFAULT ON — a WOUND UP readout with the percentage, through this mod's buff indicator (configure its style in the mod's config file). ★ THERE IS NO MUZZLE TINT HERE, unlike the weapon-side version: that rides a muzzle-flash layer table this mod does not have, and the HUD readout is arguably the better fit anyway, since a module applies to every gun you carry"},
+        {k:"readySfx",t:"text",ph:"UI/OK",d:"a sound the moment it reaches FULL. Use the readable name of any of the game's own sounds — all 259 are in SOUNDS.txt next to this mod, and 70 of them are declared empty and will be silent"},
+        {k:"stepSfx",t:"text",ph:"UI/OK",d:"a sound each time a STEP is crossed, in stepped mode. Ignored in the other ramps, where there are no steps to cross"},
+        {k:"lostSfx",t:"text",ph:"UI/OK",d:"a sound when a fully wound gun has wound all the way back down — so losing it is something you notice rather than something you discover"} ] },
+    "SlowEffect": { group:"both", label:"Slow + time slow (your hits cripple what they touch, and can bend time)",
+      params:[
+        {k:"amount",t:"number",s:true,ph:"0.5",
+          d:"THE TARGET FRACTION OF NORMAL SPEED, so LOWER IS STRONGER - 0.5 is half speed, 0.2 is a crawl, 1 is no slow at all. A value above 1 is read as a percent and converted with a warning, because \"amount\": 50 would mean fifty times normal speed. WHICH GRID DECIDES THE SCOPE and you get it free: in a WEAPON's grid only that gun slows; on the SHIP grid every weapon does. The card says which. Per level - and NOTE THE PER-LEVEL BOX WANTS A NEGATIVE NUMBER here, unlike every other series on this page, because a stronger slow is a smaller number"},
+        {k:"duration",t:"number",s:true,ph:"2",
+          d:"seconds the debuff lasts, refreshed or stacked by the next hit depending on \"mode\". Floored at 0.05. UNLIKE \"timeDuration\" BELOW, 0 here does NOT mean forever - it means gone on the frame it landed"},
+        {k:"mode",t:"select",opts:["","refresh","stack","ignore"],
+          d:"WHAT A SECOND HIT ON AN ALREADY-SLOWED TARGET DOES. refresh (the default) resets the timer. stack slows harder each time - the amount is raised to the power of the stack count, so two stacks of 0.5 is 0.25 - down to \"floor\". ignore lets the first hit run out untouched, which is the one to pick if you want a slow that is a moment rather than a state"},
+        {k:"floor",t:"number",ph:"0.2",
+          d:"THE STRONGEST A STACK CAN EVER GET, so it must be BELOW \"amount\" or it silently weakens the module: the real factor is max(amount, floor), so \"amount\": 0.1 with the default floor of 0.2 is really a 20% slow wearing a 10% label. The build log warns when they are the wrong way round. Only matters in \"stack\" mode"},
+        {k:"maxStacks",t:"int",ph:"3",
+          d:"how many times \"stack\" mode can compound. 1 behaves exactly like refresh and the build log says so"},
+        {k:"cooldown",t:"number",ph:"0",
+          d:"seconds before the same target can be re-slowed at all. 0 = no limit, which is the default and is usually right - a piercing beam re-slowing every tick costs nothing, since the factor is recomputed from the ORIGINAL each time rather than compounded"},
+        {k:"slowMove",t:"bool",
+          d:"DEFAULT TRUE. Slows how fast it travels, by raising the rigidbody's linear damping - terminal speed under a constant force is force/damping, so dividing damping by the factor multiplies the speed by it exactly. THIS IS WHY THE DEBUFF DOES NOT TOUCH THE MOVEMENT COMPONENTS: a unit carries one per AI state and those snapshot their values on entry and restore them on exit, so a slow written there becomes PERMANENT at random depending on when the AI changed state"},
+        {k:"slowTurn",t:"bool",d:"DEFAULT TRUE. The same trick on angular damping, so it also turns to face you more slowly - which is most of what makes a slow feel like a slow rather than a speed change"},
+        {k:"slowFire",t:"bool",
+          d:"DEFAULT TRUE. Slows the victim's own fire rate. Published through the weapon-stat table rather than assigned, so it cannot fight another feature writing the same field - and it is withdrawn by the WeaponBase instance, so a rebuilt enemy weapon can never inherit a stale rate"},
+        {k:"slowShots",t:"bool",
+          d:"DEFAULT TRUE, and it is the half you can actually see. \"slowFire\" changes how OFTEN it shoots; this changes how FAST THE BULLETS TRAVEL, so you can dodge them. Applied at the moment of firing rather than to shots already in the air - a bullet is a thing that has left, and reaching into flight fights the engine's own speed rewriting"},
+        {k:"slowKnockback",t:"bool",
+          d:"DEFAULT TRUE. Makes the victim LIGHTER, so your shots and blasts throw it further. Its own locomotion is unaffected: the game's push movement multiplies its force by mass, so that cancels out exactly and only EXTERNAL shoves get stronger"},
+        {k:"tint",t:"text",ph:"#66ccff or ColorCaps",
+          d:"a colour held on the victim for as long as it is slowed - a game colour name or #hex. Cleared when the debuff expires rather than timed separately, so it cannot flicker off mid-slow. Goes through the tint owner on its own \"slow\" layer, so it composes with a crit or execute flash instead of one restoring over the other"},
+        {k:"tintStrength",t:"number",ph:"1",d:"0 to 1, how hard the colour comes through. Either spelling works (tintStrength or colorStrength)"},
+        {k:"tintMode",t:"select",opts:["", "multiply", "replace"],
+          d:"multiply (the default) can only DARKEN; replace stops your colour compounding with whatever is already there. NEITHER CAN BRIGHTEN DARK ART - a sprite's colour is a vertex multiply in the shader. Pick a saturated colour"},
+        {k:"timeSlow",t:"bool",
+          d:"BEND TIME ITSELF for a moment when a hit lands - hit-stop, which is a completely different thing from the debuff above: it slows EVERYTHING INCLUDING YOU, and it needs no victim. Turned on automatically if you set \"timeScale\", so you rarely need this box. The two halves share no mechanism and either can be used alone"},
+        {k:"timeScale",t:"number",s:true,ph:"0.35",
+          d:"how slow time runs during the bend - 0.35 is a third speed, 1 is no bend. THE GAME TAKES THE STRONGEST LIVE BEND rather than compounding them, so overlapping ones cannot run away, and that is also why this half needs no coordination with Weapon Forge's own timeSlow: both mods' bends resolve to the stronger one"},
+        {k:"timeDuration",t:"number",ph:"0.25",
+          d:"how long the bend lasts, in REAL seconds. ★ 0 OR LESS MEANS FOREVER IN THIS GAME - the engine treats a non-positive duration as indefinite and never checks it for expiry, so it would hold the whole game in slow motion for the rest of the run. Clamped to 0.01 with a warning, but do not rely on that"},
+        {k:"timeCooldown",t:"number",ph:"0",
+          d:"the least time between two bends, in real seconds. ★ SET THIS. A MODULE APPLIES TO EVERY GUN IT IS CONNECTED TO, so on the SHIP grid this fires on every hit from every weapon you carry - and a beam or a shotgun re-triggers it several times a second, which reads as the game stuttering rather than punching. The weapon version never had this problem because a weapon's timeSlow only fires for that weapon. About 1 is a good start, or use onKill instead"},
+        {k:"timeEase",t:"bool",
+          d:"DEFAULT TRUE - ride back up to normal speed across the duration instead of snapping. This is most of what makes hit-stop feel good; off is a hard cut in and out"},
+        {k:"timeUnscaled",t:"bool",
+          d:"DEFAULT TRUE and you almost certainly want it. With it off the engine measures the bend's elapsed time with the clock it has just slowed down, so a 0.25s bend at scale 0.2 really lasts 1.25 seconds - and the heavier the slow the further it overruns"},
+        {k:"timeMode",t:"select",opts:["","refresh","stack","ignore"],
+          d:"only \"ignore\" means anything here: it drops a new bend while one is still running, instead of laying another on top. Defaults to the same word as \"mode\""},
+        {k:"onHit",t:"bool",
+          d:"DEFAULT TRUE - fire on every hit that connects. Turn it off with \"onKill\" on for a module that only reacts to kills"},
+        {k:"onKill",t:"bool",
+          d:"also fire when the hit KILLS. The two triggers are independent, so a card can do a small debuff on every hit and save the time bend for the kill - which is the combination worth trying first, since it needs no cooldown. A dead thing is not debuffed (there is nothing left to slow), so on a kill this means the time bend"},
+        {k:"debuff",t:"bool",
+          d:"DEFAULT TRUE. Turn it OFF for a pure hit-stop module with no effect on the enemy at all. The build log refuses a card with this off and no timeSlow, since that is an effect that does nothing"} ] },
     "CritEffect": { group:"both", label:"Crit chance (a chance for hits to do multiplied damage)",
       params:[
         {k:"chance",t:"number",s:true,ph:"0.15",
@@ -428,8 +745,10 @@
           d:"throb the tint this many times a second instead of holding it steady. 0 = steady, which is what you want for a flash this short"},
         {k:"tintStrength",t:"number",ph:"1",
           d:"HOW HARD THAT COLOUR COMES THROUGH, 0 to 1. 1 is the full colour and is what this has always done; 0.35 is a hint of it; 0 is no tint at all. Either spelling works (tintStrength or colorStrength), because this mod's blocks are split between color* and tint* naming and remembering which one a given block uses is a bug generator. Worth turning down when several effects tint the same unit: the tint owner MULTIPLIES live layers, so two full-strength colours read as very dark. NOTE with Weapon Forge installed, that mod owns the crit patch and the LOOK comes from the weapon's own crit block, so set it there instead - the build log says so once per run"},
+        {k:"tintMode",t:"select",opts:["", "multiply", "replace"],
+          d:"HOW THE COLOUR MEETS THE SPRITE UNDERNEATH IT, and this is the answer if you have already turned tintStrength up and the flash still is not obvious. MULTIPLY (the default, and what this has always done) can ONLY DARKEN: the sprite's colour is multiplied by yours, so a pale flash over a dark enemy barely changes it while the same flash over a pale one reads clearly - which is why a crit on one mob can look obvious and on the one beside it look like nothing. No strength value fixes that, because at 1 a multiply is already as strong as a multiply gets. REPLACE stops your colour COMPOUNDING - it sets the tint factor to your colour rather than multiplying it into whatever the prefab and the other live layers already put there, so it is the strongest a tint can be. BUT NEITHER MODE CAN BRIGHTEN DARK ART: a sprite's colour is a vertex multiply in the shader, so the pixel you see is always texture x colour and the most any tint can do is texel x yours. The Fly's body art averages 40/255 luminance (16% grey) against 76 for its beak, which is why a flash reads on the mouth and barely on the body. Pick a colour that survives a multiply - saturated reds, oranges, greens, not pale pastels - or use colorPulse, since motion is visible at any brightness. \"colorMode\" is accepted as a spelling of the key and \"tint\" as a spelling of multiply. NOTE with Weapon Forge installed that mod owns the crit patch and the look comes from the weapon's own crit block, so set it there instead"},
         {k:"sfx",t:"text",ph:"Explosion3",
-          d:"a distinct sound on a crit. Use the READABLE NAME of any of the game's own sounds - \"Cells/Fuel\", \"UI/Click\", \"Weapons/Popper/Shoot\" - all 259 are listed in SOUNDS.txt next to this mod, with their clip counts, and 70 of them are declared EMPTY and will be silent. A raw sound id still works. Or the name of a custom sound - but CUSTOM SOUNDS LIVE IN WEAPON FORGE'S sounds FOLDER and only resolve with that mod installed (one folder and one set of names across both mods, rather than a second decoder here). A name nothing knows is reported in the build log rather than being silently mute. FREE BONUS with Weapon Forge installed: a weapon with \"hitSound\": { \"pitch\": \"damage\" } already pitches its hit tick by damage dealt, so a crit sounds heavier with no sound set here at all"},
+          d:"a distinct sound on a crit. Use the READABLE NAME of any of the game's own sounds - \"Cells/Fuel\", \"UI/OK\", \"Weapons/Popper/Shoot\" - all 259 are listed in SOUNDS.txt next to this mod, with their clip counts, and 70 of them are declared EMPTY and will be silent. A raw sound id still works. Or the name of a custom sound - but CUSTOM SOUNDS LIVE IN WEAPON FORGE'S sounds FOLDER and only resolve with that mod installed (one folder and one set of names across both mods, rather than a second decoder here). A name nothing knows is reported in the build log rather than being silently mute. FREE BONUS with Weapon Forge installed: a weapon with \"hitSound\": { \"pitch\": \"damage\" } already pitches its hit tick by damage dealt, so a crit sounds heavier with no sound set here at all"},
         {k:"shake",t:"bool",
           d:"kick the camera on a crit, using the WEAPON's own shake preset - so it shakes like a heavier version of that gun rather than a generic thump. Off by default; a crit-per-hit build with shake on is a lot of camera"} ] },
     "LeechEffect": { group:"both", label:"Leech / heal on hit (your hits heal you, and a bubble flies back)",
@@ -514,6 +833,49 @@
           d:"how the value is read BEFORE the operation. Constant = as-is; FromOriginal = a share of the weapon's base stat; FromCurrent = a share of the stat right now. Leave on Constant unless you want it to scale with other modules"},
         {k:"value",t:"number",s:true,ph:"40",
           d:"how much to change it by. PUSH: stock weapons sit around 20-200, and the shove fights the target's mass AND damping, so a Queen barely moves where a Cross flies. SPIN-UP: seconds, and NEGATIVE is the useful direction (a faster ramp)"} ] },
+    "WeaponCosmeticEffect": { group:"weapon", label:"Weapon FEEL (sound / muzzle flash / camera shake / rumble - no stats change)",
+      params:[
+        {k:"shootSfx",t:"text",ph:"Weapons/Shotgun/Shoot",
+          d:"the sound every shot makes. A GAME sound is named the way the audio database names it, with slashes - all 259 are listed in SOUNDS.txt next to this mod, and there are 44 under WEAPONS. A custom .wav from Weapon Forge's sounds folder also works when that mod is installed. A NAME THE MOD CANNOT FIND IS REFUSED rather than assigned: an unknown sound id plays nothing at all, so a typo would leave the gun SILENT instead of just unchanged. The log names the file and the key. Note ~70 of the 259 entries are declared with no clip - they resolve perfectly and are silent; SOUNDS.txt marks every one"},
+        {k:"continuousShootSfx",t:"text",ph:"",
+          d:"the looping sound a HELD weapon makes - beams and miniguns. Does nothing on a weapon that fires in discrete shots, because nothing ever starts the loop"},
+        {k:"startSfx",t:"text",ph:"",
+          d:"played once when you pull the trigger, before the shooting"},
+        {k:"releaseSfx",t:"text",ph:"",
+          d:"played once when you let go. Pairs with startSfx for charge-up guns"},
+        {k:"warmupSfx",t:"text",ph:"",
+          d:"the spin-up whine, for a weapon with a WarmupTime. Silent on one without"},
+        {k:"reloadSfx",t:"text",ph:"",
+          d:"played on reload"},
+        {k:"muzzleParticle",t:"textselect",ph:"MuzzleParticle Laser",
+          opts:["MuzzleParticle Laser","MuzzleParticle LaserRed","MuzzleParticle Popper",
+                "MuzzleParticle PopperRed","MuzzleParticle Sniper","MuzzleParticle Cross",
+                "MuzzleParticle CrossAlpha","MuzzleParticle Fly","MuzzleParticle Drone",
+                "MuzzleParticle CrawlerLaser","MuzzleParticle Beacon"],
+          labels:["Laser","LaserRed","Popper","PopperRed","Sniper - the long one","Cross",
+                  "CrossAlpha","Fly","Drone","CrawlerLaser","Beacon"],
+          d:"THE FLASH AT THE BARREL - swaps the whole particle prefab, so it changes shape and colour together. Those eleven are every one the game ships. The swap is safe because of WHEN it happens: the game builds the flash instances right after the modules run, so the new prefab is what gets built. (Weapon Forge's muzzleColor / muzzleSprite keys RESHAPE a weapon's existing flash instead - use those for fine control on your own weapons, this for swapping wholesale on any gun)"},
+        {k:"reloadParticle",t:"text",ph:"",
+          d:"the puff on reload. Same rules as the muzzle flash; rarely worth setting"},
+        {k:"shake",t:"number",s:true,ph:"1.5",
+          d:"MULTIPLIES the weapon's own camera kick - 1.5 is half again as hard, 0.5 is half. This is the knob you want: it works on any gun without naming anything, and it keeps that gun's own character (the vibrato, the randomness, the angle) instead of replacing it. STRENGTH ONLY, never duration - 'harder' and 'longer' are different asks and a stretched shake is nausea rather than feedback. Capped at 5. A weapon with NO kick of its own has nothing to multiply, so this does nothing there and the log says so - use shakePreset to give it one outright"},
+        {k:"shakePreset",t:"textselect",ph:"",
+          opts:["Shake_Gunshot_Small","Shake_Gunshot_Medium","Shake_Collision","Shake_Excavate",
+                "Shake_Explosion_MIN","Shake_Explosion","Shake_Explosion_Long","Shake_Explosion_MAX",
+                "SmallExplosion","LargeExplosion","Shake_Shipdamage","Shake_Wound"],
+          labels:["Gunshot Small - the usual one","Gunshot Medium","Collision","Excavate - digging",
+                  "Explosion MIN","Explosion","Explosion Long","Explosion MAX - the biggest",
+                  "SmallExplosion","LargeExplosion","Shipdamage","Wound"],
+          d:"REPLACES the kick with a named one, rather than scaling it. Use this to put a kick on a gun that never had one - and think twice before doing it to a BEAM, which fires continuously, so a per-shot shake on one is unpleasant. If you set both, the named preset wins and the number is ignored (the log says so)"},
+        {k:"rumble",t:"number",s:true,ph:"1.5",
+          d:"MULTIPLIES the controller rumble, same idea as shake. GAMEPAD ONLY - on keyboard and mouse this does nothing at all, and even on a pad it is scaled again by the rumble setting in the game's options, so it can do nothing through no fault of yours. The card prints '(PAD)' so a player is not left guessing. Motor speeds are clamped to the hardware's 0-1 range, so a big multiplier on an already-strong preset simply reaches maximum"},
+        {k:"rumblePreset",t:"textselect",ph:"",
+          opts:["Rumble WeaponShot Small","Rumble WeaponShot Medium","Rumble WeaponShot Large",
+                "Rumble WeaponShot Flame","Rumble WeaponShot Derbis","Rumble Ship Boost",
+                "Rumble Ship Damage","Rumble Ship Death"],
+          labels:["WeaponShot Small","WeaponShot Medium","WeaponShot Large","WeaponShot Flame",
+                  "WeaponShot Derbis","Ship Boost","Ship Damage","Ship Death"],
+          d:"REPLACES the rumble with a named one. Gamepad only, as above. Setting both means the named one wins"} ] },
     "WeaponResourceEffect": { group:"weapon", label:"Ammo swap (change which resource the weapon spends)",
       params:[
         {k:"resource",t:"resource",
@@ -573,6 +935,80 @@
     var h='';
     for(var i=0;i<RESOURCES.length;i++) h+='<option>'+RESOURCES[i]+'</option>';
     return h;
+  }
+
+  // EVERY SPELLING EffectBuilder'S SWITCH ACCEPTS, folded onto the one key this
+  // page uses for that effect.
+  //
+  // The page writes the class name ("WeaponCosmeticEffect") and the mod accepts
+  // that plus a handful of friendlier words the how-to teaches - "cosmetic",
+  // "feel", "onkill", "crit", "leech" and about sixty more. A hand-written file
+  // using any of those loaded here as an unknown type: the dropdown grew a
+  // "(from file)" entry, renderParams found no spec and drew NOTHING, and the
+  // module's whole configuration was therefore invisible - and gone on the next
+  // save, because build() reads the params out of controls that were never
+  // created. R17 test 227: *"module builder.html looks like its missing all the
+  // information tied to the .json file. It only has cosmetic (fromfile) and
+  // nothing else."*
+  //
+  // The mod has long had a rule that its switch must accept the page's
+  // spelling. NOBODY WROTE THE RULE IN THE OTHER DIRECTION, so the two halves
+  // agreed on one vocabulary each and only the mod knew both.
+  //
+  // Derived from the `case` labels in EffectBuilder.cs, one line per group.
+  var EFFECT_ALIASES = (function(){
+    var groups = [
+      ["ModifyResourceCapacity","modifyresourcecapacity"],
+      ["ResourceAutoChargeEffect","resourceautochargeeffect","regen"],
+      ["DrainResourceEffect","drainresourceeffect","drain"],
+      ["AddShieldEffect","addshieldeffect","shield"],
+      ["KillRewardEffect","killrewardeffect","killreward","onkill","resourceonkill"],
+      ["ContactDamageEffect","contactdamageeffect","contactdamage","contact","ram","spikes"],
+      ["ExecuteEffect","executeeffect","execute","finish","finisher"],
+      ["GrowEffect","groweffect","grow","growth","growingshot"],
+      ["SlowEffect","sloweffect","slow","chill","timeslow","hitstop"],
+      ["WindupEffect","windupeffect","windup","rampup","spool"],
+      ["CritEffect","criteffect","crit","critical","critchance","criticalhit"],
+      ["LeechEffect","leecheffect","leech","lifesteal","healonhit","vampiric"],
+      ["ModifyWeaponProperty","modifyweaponproperty","weaponstat"],
+      ["ExtraWeaponStatEffect","extraweaponstateffect","extraweaponstat","pushforce","push","warmuptime","spinup"],
+      ["WeaponCosmeticEffect","weaponcosmeticeffect","weaponcosmetic","cosmetic","feel","shake","rumble","muzzle","weaponsfx"],
+      ["WeaponResourceEffect","weaponresourceeffect","weaponresource","ammo","resourceused"],
+      ["ShipStatEffect","shipstateffect","shipstat","speed","engine","dash","iframes"],
+      ["CellConvertEffect","cellconverteffect","cellconvert","terraform","dig"],
+      ["AmmoEffect","ammoeffect","infiniteammo","freeammo","reload"],
+      ["StealthEffect","stealtheffect","stealth","cloak","invisible"],
+      ["LastStandEffect","laststandeffect","laststand","cannotdie"],
+      ["InvulnEffect","invulneffect","invuln","invulnerability","mercy"],
+      ["IncreaseExplosionRadiusEffect","increaseexplosionradiuseffect","explosionradius"],
+      ["AddImpactExplosionEffect","addimpactexplosioneffect","impactexplosion"],
+      ["AddBurnEffect","addburneffect","burn"],
+      ["BurnTickRateEffect","burnratemoduleeffect","burntickrateeffect","burntickrate","burnrate","burnspeed","quickenburn"],
+      ["BurnColorEffect","burncoloreffect","burncolor","burntint"],
+      ["Phasing","phasingmoduleeffect","phasing","phase","noclip"],
+      ["PierceCap","piercemoduleeffect","piercecap","pierce","piercing"],
+      ["AddExplosionEffect","addexplosioneffect","explosion"],
+      ["AddDischargeEffect","adddischargeeffect","discharge","spark"]
+    ];
+    var map={};
+    for(var i=0;i<groups.length;i++){
+      var canon=groups[i][0];
+      // The page's own key counts as a spelling of itself, so a file that
+      // already says "WeaponCosmeticEffect" needs no special case.
+      map[canon.toLowerCase()]=canon;
+      for(var j=1;j<groups[i].length;j++) map[groups[i][j]]=canon;
+    }
+    return map;
+  })();
+
+  // Resolve whatever a file says into the key this page knows, or hand the
+  // string back untouched when it is genuinely unknown - so a real typo still
+  // shows as "(from file)" rather than being snapped to something plausible.
+  function canonicalEffectType(t){
+    if(!t) return t;
+    if(EFFECTS[t]) return t;
+    var k=String(t).toLowerCase().replace(/[^a-z0-9]/g,"");
+    return EFFECT_ALIASES[k] || t;
   }
 
   // "both" means the effect is valid on either grid. Without this the filter
@@ -690,6 +1126,43 @@
     }
   }
 
+  // A param key may be DOTTED ("gas.radius"), which nests it inside a
+  // sub-object on the effect instead of writing a literal "gas.radius" key.
+  //
+  // Needed because some effects carry a described BLOCK rather than a flat
+  // list of numbers - the gas cloud a kill-reward module leaves is one object
+  // with fifteen fields, and flattening it into fifteen "gasSomething" keys
+  // would give the page and the mod two different vocabularies for one thing.
+  //
+  // `effGet` below is its exact mirror, and they are written next to each other
+  // on purpose: the round-trip rule here is that anything folded on SAVE must
+  // be unfolded on LOAD, and the one time that pairing was broken the page
+  // loaded a working file with no parameter controls and would have SAVED it
+  // back empty. That was R18's test 233.
+  function effSet(obj,key,val){
+    var parts=key.split(".");
+    var cur=obj;
+    for(var i=0;i<parts.length-1;i++){
+      if(typeof cur[parts[i]]!=="object"||cur[parts[i]]===null) cur[parts[i]]={};
+      cur=cur[parts[i]];
+    }
+    cur[parts[parts.length-1]]=val;
+  }
+
+  // Returns {has:bool, val:any} rather than a bare value, because `undefined`
+  // and "absent" have to be told apart - a key legitimately holding 0 or false
+  // must still load.
+  function effGet(obj,key){
+    var parts=key.split(".");
+    var cur=obj;
+    for(var i=0;i<parts.length;i++){
+      if(cur===null||typeof cur!=="object"||!(parts[i] in cur))
+        return {has:false,val:null};
+      cur=cur[parts[i]];
+    }
+    return {has:true,val:cur};
+  }
+
   function collectEffects(){
     var out=[];
     var rows=effectsList.querySelectorAll(".effect-row");
@@ -702,10 +1175,12 @@
         var raw=el.value;
         if(raw===null||String(raw).trim()==="") continue;
         raw=String(raw).trim();
-        if(t==="bool") obj[key]=(raw==="true");
-        else if(t==="int") obj[key]=parseInt(raw,10);
-        else if(t==="number"){ var n=parseFloat(raw); if(!isNaN(n)) obj[key]=n; }
-        else obj[key]=raw; // resource / select
+        var val;
+        if(t==="bool") val=(raw==="true");
+        else if(t==="int") val=parseInt(raw,10);
+        else if(t==="number"){ var n=parseFloat(raw); if(isNaN(n)) continue; val=n; }
+        else val=raw; // resource / select
+        effSet(obj,key,val);
       }
 
       // Fold "<key> per level" into a scaling object. Only when it is
@@ -717,8 +1192,16 @@
         var pl=perLevel[q], pk=pl.getAttribute("data-plkey");
         var pv=parseFloat(String(pl.value).trim());
         if(isNaN(pv)||pv===0) continue;
-        var base=(typeof obj[pk]==="number")?obj[pk]:0;
-        obj[pk]={ baseValue:base, increaseMethod:"Add", change:pv };
+        // Dotted-aware like the writer above. No per-level param is nested
+        // TODAY - the gas block is deliberately flat-valued, since a cloud that
+        // re-derived itself on every level change would hit the
+        // invisible-booster trap from the other direction. But a guard written
+        // for one instance is not a guard for the mechanism, and the next
+        // nested block to want scaling would otherwise emit a literal
+        // "a.b" key that the mod cannot read and nothing would say so.
+        var pgot=effGet(obj,pk);
+        var base=(typeof pgot.val==="number")?pgot.val:0;
+        effSet(obj,pk,{ baseValue:base, increaseMethod:"Add", change:pv });
       }
 
       out.push(obj);
@@ -754,6 +1237,26 @@
       else out[path]=raw;
     }
 
+    // shopCost.Chip / shopCostIncrement.Powerstar arrive here as FLAT keys,
+    // because this page is flat by design (see loadObject). The mod wants an
+    // object per group, so fold them the same way lootFrom is folded just
+    // below - a post-process in build(), not a change to how fields are read.
+    //
+    // Dropping a zero is deliberate rather than tidiness: the mod REFUSES a
+    // cost below one whole unit (the game's purchase code subtracts a
+    // currency without checking the ship can hold it, and a zero is the one
+    // value that slips past the affordability check), so emitting one would
+    // put a warning in the log of every file that ever touched the field.
+    ["shopCost","shopCostIncrement"].forEach(function(group){
+      var nested={}, any=false;
+      Object.keys(out).forEach(function(k){
+        if(k.indexOf(group+".")!==0) return;
+        var v=out[k]; delete out[k];
+        if(typeof v==="number" && v>0){ nested[k.slice(group.length+1)]=v; any=true; }
+      });
+      if(any) out[group]=nested; else delete out[group];
+    });
+
     // lootFrom is typed as a comma list because one crate is the common case
     // and "tech" is friendlier than ["tech"]. Emit a bare string for one pool
     // and a real array for several - the mod reads either.
@@ -785,6 +1288,7 @@
     var keys=["name","displayName","description","target","icon","color",
               "source","lootWeight","lootFrom","lootRepeat",
               "shopPrice","shopPriceIncrement","shopPricePercent",
+              "shopCost","shopCostIncrement","shopUnlock",
               "shopUnlockLevel","repeatInShop","canBeBoosted","effects"];
     var ordered={};
     for(var k=0;k<keys.length;k++) if(keys[k] in out) ordered[keys[k]]=out[keys[k]];
@@ -902,9 +1406,20 @@
       if(tgt) tgt.value=obj.target;
     }
 
+    // The mirror of the fold in build(): a nested { "Chip": 1 } has to be
+    // spread back onto the flat `shopCost.Chip` controls, or LOAD .JSON
+    // would silently drop every ingredient cost in the file.
+    var spread={};
+    ["shopCost","shopCostIncrement"].forEach(function(group){
+      var g=obj[group];
+      if(!g || typeof g!=="object" || Array.isArray(g)) return;
+      Object.keys(g).forEach(function(k){ spread[group+"."+k]=g[k]; });
+    });
+
     var flat=document.querySelectorAll("#form [data-path]");
     for(var i=0;i<flat.length;i++){
       var el=flat[i], p=el.getAttribute("data-path");
+      if(p in spread){ el.value=spread[p]; continue; }
       if(!(p in obj)) continue;
       var v=obj[p];
       if(v===null||v===undefined) continue;
@@ -919,6 +1434,12 @@
       var eff=effects[e];
       if(!eff||!eff.type) continue;
 
+      // A file may use any spelling the mod accepts, not just the one this
+      // page writes - see EFFECT_ALIASES. Resolve BEFORE looking for the
+      // option, or every friendlier name loads as an unknown type with no
+      // parameter controls at all.
+      var effType=canonicalEffectType(eff.type);
+
       addEffectRow();
       var row=effectsList.lastChild;
       var typeSel=row.querySelector(".eff-type");
@@ -926,20 +1447,24 @@
       // The file may name an effect from the other group (or one this page
       // doesn't know). Add it rather than silently snapping to the first
       // option, which would quietly change what the module does on save.
-      if(!typeSel.querySelector('option[value="'+eff.type+'"]')){
+      if(!typeSel.querySelector('option[value="'+effType+'"]')){
         var opt=document.createElement("option");
-        opt.value=eff.type;
-        opt.textContent=eff.type+" (from file)";
+        opt.value=effType;
+        opt.textContent=effType+" (from file)";
         typeSel.appendChild(opt);
       }
-      typeSel.value=eff.type;
-      renderParams(row.querySelector(".eff-params"), eff.type);
+      typeSel.value=effType;
+      renderParams(row.querySelector(".eff-params"), effType);
 
       var inputs=row.querySelectorAll("[data-key]");
       for(var k=0;k<inputs.length;k++){
         var ip=inputs[k], key=ip.getAttribute("data-key");
-        if(!(key in eff)) continue;
-        var val=eff[key];
+        // effGet, not `key in eff` - a dotted key lives one level down and a
+        // plain `in` test would miss every field of a nested block, which is
+        // the same silent-empty-controls failure as R18's test 233.
+        var got=effGet(eff,key);
+        if(!got.has) continue;
+        var val=got.val;
         if(val===null||val===undefined) continue;
         // A scaling object has to be unfolded back into the two boxes, or
         // LOAD would put "[object Object]" in the value field and silently

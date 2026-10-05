@@ -12,7 +12,7 @@ Built against **PUNK Playtest v0.12.9**.
 
 - **BepInEx** — see [PunkMods](https://github.com/Osanchez/PunkMods) for a good walkthrough of setting up mods for PUNK.
 
-> **Contributing?** [BUILDING.md](BUILDING.md) gets you compiling — you point one property at your own PUNK install and nothing else needs touching. [CLAUDE.md](CLAUDE.md) is the orientation doc: the engine findings this mod is built on, the code conventions, and the traps that cost real time. Worth reading before your first change, whether you're working by hand or with an AI assistant.
+> **Contributing?** [BUILDING.md](BUILDING.md) gets you compiling — you point one property at your own PUNK install and nothing else needs touching. [CLAUDE.md](CLAUDE.md) is the orientation doc: the engine findings this mod is built on, the code conventions, and the traps that cost real time. Worth reading before your first change, whether you're working by hand or with an AI assistant. The ranked list of base-game stats no module could change yet is in [Docs/](Docs/).
 
 ## Install
 
@@ -23,7 +23,7 @@ Built against **PUNK Playtest v0.12.9**.
 
 > Files are read at **startup** — restart to see changes.
 >
-> A bad file is skipped, never fatal. Reasons are written to `BepInEx\LogOutput.log` — search for `ModuleForge`.
+> A bad file is skipped, never fatal. Reasons are written to the mod's own log, `BepInEx\ModuleForge.log` (the launch before is `ModuleForge.prev.log`). `LogOutput.log` stays readable for BepInEx and other mods: it gets only Module Forge's load lines and a copy of every error. Set `[Logging] OwnLogFile = false` to put everything back in `LogOutput.log`.
 
 ---
 
@@ -53,11 +53,22 @@ One module can carry **several effects**, and you can freely mix buffs with draw
 | `ResourceAutoChargeEffect` | regenerate a resource per second |
 | `DrainResourceEffect` | drain per second (negative = gain) |
 | `AddShieldEffect` | block a fraction of one damage type |
+| `ShipStatEffect` | the ship's own movement and defence numbers — speed, acceleration, turning, drag, dash cost / cooldown / force / duration, i-frames, fire resistance and burn tick rate. These are the stats no stock module can touch, and several were only reachable from the debug menu before |
+| `StealthEffect` | go invisible — permanently, on dash, or for a window after being hit. Enemy vision checks nothing but the invisible flag, so `revealOnFire: false` is the strongest setting in the mod and the log says so |
+| `LastStandEffect` | survive a killing blow with 1 health, on a cooldown |
+| `InvulnEffect` | a real i-frame window, on hit or on dash |
+| `CellConvertEffect` | terraform — turn one cell type into another where your shots land, including digging (Fog has no collider, so rock → Fog is a hole) |
 
 ### Weapon effects
 | Effect | Does |
 |---|---|
 | `ModifyWeaponProperty` | change fire rate, burst, projectile count, spread, angles, knockback, cost, range or speed — flat or as a percentage |
+| `ExtraWeaponStatEffect` | the weapon stats `ModifyWeaponProperty` does not reach — push force, warm-up time |
+| `WeaponResourceEffect` | swap which resource the weapon spends, or make it free |
+| `AmmoEffect` | infinite ammo, free shots, or a faster reload |
+| `CritEffect` | a chance to multiply a hit. Which grid it sits in decides the scope: in a weapon's grid only that gun crits, on the ship grid every weapon does |
+| `LeechEffect` | heal a share of the damage dealt. Same grid rule, and it works on every weapon type because it measures the victim's own tank rather than hooking a projectile |
+| `KillRewardEffect` | grant resource, cool the gun, or start a buff on a kill — and optionally drop it as a real pickup rather than granting it |
 | `IncreaseExplosionRadiusEffect` | bigger blasts |
 | `AddImpactExplosionEffect` | make shots explode on hit |
 | `AddExplosionEffect` | full explosion with its own damage, radius, burn and per-projectile cost |
@@ -68,6 +79,10 @@ One module can carry **several effects**, and you can freely mix buffs with draw
 | `Phasing` | your projectiles pass through terrain but still hit enemies |
 | `PierceCap` | turn piercing on and cap it — pierce *N* enemies then vanish, with optional damage falloff |
 
+Every effect also answers to a friendlier alias (`crit`, `onKill`, `stealth`, `dig`, and so on) as
+well as its class name, and the builder page's dropdown is the same list with descriptions. A name
+the switch does not know is reported at startup with the full list of what it does know.
+
 ### Availability
 - `source`: `loot`, `shop`, `both`, or **`none`** (built and registered but never offered)
 - `lootWeight` — drop chance against other crate modules
@@ -77,7 +92,7 @@ One module can carry **several effects**, and you can freely mix buffs with draw
 ### Module card
 Set the icon sprite, tint it with a game colour or any `#hex`, and write your own name and description.
 
-Your pierce and phasing modules also **report themselves on the card** — hover a module on your ship grid and it shows what *that* module contributes (`PIERCE +2`, and the running ship total), while the weapon card shows the combined total.
+**Every effect writes its own line on the card**, which is a standing rule here rather than a nicety: the card is the only place a player can learn what a module does, so a new stat is not finished until it shows there. Hover a module on your ship grid and it lists what *that* module contributes — `PIERCE +2` alongside the running ship total, the crit chance and multiplier, the leech share, the ship stats it moves. A module in the shop list shows only its name and description, which is stock behaviour for every module in the game rather than a mod quirk.
 
 ---
 

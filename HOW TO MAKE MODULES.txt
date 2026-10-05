@@ -22,10 +22,61 @@ available in loot and/or the shop per your settings.
 
 Edits are read at STARTUP - restart the game to see changes.
 
-A module attaches to ONE of two places, chosen by "target":
-  ship    -> the ship-body grid (stat ups, regen, shields, drains)
-  weapon  -> a weapon/gadget grid (fire rate, projectiles, explosions)
-The game routes it automatically based on this choice.
+"target" says which KIND of module this is:
+  ship    -> an UPGRADES card (stat ups, regen, shields, drains)
+  weapon  -> a WEAPON MODS card (fire rate, projectiles, explosions)
+
+WHAT THAT ACTUALLY CHANGES, because it is less than it sounds and
+this file used to say otherwise ("a module attaches to ONE of two
+places"). It picks which stock module is cloned as the shell, and the
+shell's type decides three presentation things: the word printed at
+the top of the module card (UPGRADES or WEAPON MODS), which section
+of the shop it is listed under, and the background art behind its
+icon. Nothing else - the two shells are otherwise identical assets.
+
+IT DOES NOT DECIDE WHERE YOU CAN PUT IT. Every ordinary cell in the
+grid is a "Normal" slot, and a Normal slot accepts both types (plus
+power cores and boosters); only the six special slots - the ship
+core, the two weapon mounts and the three ability slots - are picky.
+So a "ship" module can be connected into a weapon's cluster and a
+"weapon" module can be connected around the ship core, and the game
+will run it there.
+
+AND FOR SCOPE, WHERE YOU PUT IT IS THE ONLY THING THAT COUNTS. An
+effect that behaves differently per grid - KillRewardEffect,
+CritEffect, LeechEffect - reads the grid it is actually connected
+to, never this field. Set "target" to whichever shelf you want the
+module to appear on; slot it wherever you want it to act.
+
+A MODULE MUST BE CONNECTED AND POWERED TO DO ANYTHING
+-----------------------------------------------------
+This is the game's rule for its own modules and Module Forge now
+keeps it too. A card lying loose in the grid, or connected but
+sitting outside its cluster's power core, has NO effect - and it
+starts working the instant you plug it in, with no restart.
+
+You can already see which is which without reading anything: the
+grid draws an unconnected or unpowered icon differently, and the
+game's own hover card counts such a module as not installed.
+
+CHANGED 2026-09-11, AND IT USED TO BE WRONG HERE. Every effect that
+registered something when the card was placed - on-kill payouts,
+crit, leech, ship stats, pierce, phasing, burn rate and colour,
+stealth, last stand, invulnerability, ammo - registered on PLACEMENT
+and never checked again. So an unpowered module kept working. The
+on-kill ones failed the worse way round: never having been handed a
+weapon, an unpowered card sitting in a WEAPON's cluster paid out for
+every gun on the ship rather than for that one.
+
+Nothing in any module file changes. If a module of yours suddenly
+appears to do nothing, check the power before you check the JSON -
+and look in the log for a line naming the card, which is said once
+per run each way (switched off, and switched back on).
+
+The three effects that only touch a weapon - CellConvertEffect,
+ExtraWeaponStatEffect, WeaponResourceEffect - never had the problem:
+the game only offers a weapon the modules in its cluster that are
+already connected and powered.
 
 ----------------------------------------------------------------
  2. QUICK START
@@ -38,8 +89,28 @@ The game routes it automatically based on this choice.
      SAVE .JSON FILE, and drop it in the modules folder.
   4. Restart the game. The module now drops / is in the shop.
 
-Errors are logged to <game>\BepInEx\LogOutput.log (search
-"ModuleForge") - a bad file is skipped, never crashes the game.
+Problems are logged to Module Forge's own log - a bad file is
+skipped, never crashes the game:
+     <game>\BepInEx\ModuleForge.log
+
+THE LOG FILE (since 2026-09-25). Module Forge writes everything to
+ModuleForge.log, beside BepInEx's own LogOutput.log, so LogOutput.log
+stays readable for BepInEx and any other mods you run:
+  - ModuleForge.log is THIS launch. It starts with the BUILD stamp.
+  - ModuleForge.prev.log is the launch BEFORE, kept so a restart or
+    a quit to the desktop does not wipe the session you wanted.
+  - LogOutput.log keeps Module Forge's "loaded" and BUILD lines, and
+    a copy of every ERROR, so a broken file is still visible there.
+    Warnings and ordinary lines are only in ModuleForge.log.
+  - The BepInEx console window shows the same as LogOutput.log.
+  - If the GAME itself throws an error whose stack trace names
+    Module Forge, a copy goes in ModuleForge.log too. BepInEx leaves
+    the game's own errors out of LogOutput.log by default, so this
+    file is the only place those are written down.
+  - Two copies of the game at once: the second writes
+    ModuleForge.2.log and says why at the top.
+  - Want it all back in LogOutput.log? Set [Logging] OwnLogFile =
+    false in BepInEx\config\com.sugarheady.moduleforge.cfg.
 
 ----------------------------------------------------------------
  3. FILE STRUCTURE
@@ -94,9 +165,15 @@ put one in decides its SCOPE, and that is free rather than a flag:
   LeechEffect      your hits heal you
   KillRewardEffect pays out when you kill something
 
+  "Which grid you put one in" means exactly that - where you slot the
+  card in game, not what "target" says. A "ship" module connected into
+  a weapon's cluster scopes to that weapon, and a "weapon" module
+  connected around the ship core covers every gun. See section 1.
+
   KillRewardEffect (alias "onKill")
      { resource, amount, asPickup, chance, maxPerSecond, clearBurn,
-       buffDuration, buffFireRate, buffDamage, buffMaxStacks }
+       coolHeat, buffDuration, buffFireRate, buffDamage, buffMaxStacks,
+       buffIndicator, gas }
 
   Pays out when the ship KILLS something.
 
@@ -182,9 +259,50 @@ put one in decides its SCOPE, and that is free rather than a flag:
                not 4 kills a second. RETUNE EXISTING FILES. A module
                that grants no resource (buff-only, burn-only) still
                counts payouts, so it keeps a limiter either way.
-    clearBurn  burn level removed from your own ship per kill - the only
+    clearBurn  burn level removed from your own ship per kill - as in
+               your ship is ON FIRE. NOT the "overheat" meter; that is
+               "coolHeat" below, and the two read as the same word on
+               the module card until R15 (both said "cools"). The only
                payout that can save you mid-fire. The ship sheds burn at
                5/second by itself.
+
+    coolHeat   heat removed from a weapon's OVERHEAT meter per kill, in
+               the same units as that block's "max" and "perShot".
+
+               NEEDS WEAPON FORGE. "overheat" is a per-weapon block from
+               a Weapon Forge weapon FILE, so with that mod absent there
+               is no meter in existence to take heat off. Module Forge
+               deliberately does not grow a heat system of its own to
+               fall back on - one owner per mechanic is the rule these
+               two mods are built on, and a second implementation would
+               be two engines fighting over one meter. Without Weapon
+               Forge this key warns at build time, the card says so, and
+               the rest of the module works normally.
+
+                   { "type": "onKill", "coolHeat": 25 }
+
+               THE PART WORTH DESIGNING AROUND: a kill that drops the
+               meter below the weapon's "ventTo" also ENDS A VENT
+               LOCKOUT on the next frame, through the same path a normal
+               cooldown uses - so the recover sound, the repaint and the
+               fire-rate restore all happen properly. Slot this next to
+               a gun that jams hard and it stops jamming while you are
+               connecting.
+
+               SCOPE is the usual rule for this effect and needs no
+               flag: in a WEAPON's grid only that weapon's meter cools;
+               on the SHIP grid whichever gun scored the kill does.
+
+               "In a weapon's grid" is about where you SLOT the card,
+               not about "target". A module built with "target":
+               "ship" cools only one gun once you connect it into
+               that gun's cluster. Set "target": "weapon" when you
+               also want it filed under WEAPON MODS in the shop.
+
+               Weapon Forge can do the same thing from the weapon file
+               itself - "coolHeat" inside its "onKill" block. Use that
+               when the gun should always have it; use this when it
+               should be something you find and slot.
     buffIndicator
                SHOWS THE BUFF ON SCREEN while it lasts, wearing this
                module's own icon and colour. "feed" (the game's own
@@ -220,6 +338,734 @@ put one in decides its SCOPE, and that is free rather than a flag:
                grid the buff applies to every weapon you are holding; in
                a weapon's grid, only to that weapon. maxStacks 1 means
                each kill refreshes rather than stacks.
+
+    gas        A LINGERING CLOUD LEFT ON EVERY CORPSE. A block, not a
+               number - this is the one reward here that describes a
+               thing rather than a quantity.
+
+                 { "type": "onKill",
+                   "gas": {
+                     "damagePerSecond": 2.5,
+                     "burnPerSecond": 1.5,
+                     "duration": 3.5,
+                     "radius": 1.1,
+                     "growTo": 2.4,
+                     "slow": 0.4,
+                     "color": "#8CF266",
+                     "max": 22
+                   } }
+
+               IT WORKS WITHOUT WEAPON FORGE, and that is the difference
+               between this key and "coolHeat" above. An overheat meter
+               only exists inside a Weapon Forge weapon FILE, so there is
+               nothing for a local copy to act on and "coolHeat" bridges
+               instead. A cloud has no such dependency - it is an object
+               in the world - so Module Forge grows its own and a gas
+               module works with any stock gun.
+
+               AND IT IS NOT SPELLED THE WAY WEAPON FORGE SPELLS IT, on
+               purpose. Over there you write:
+
+                 "gas": { ...the cloud... },        <- on the WEAPON
+                 "onKill": { "gas": true }          <- a switch
+
+               because the weapon has already described its cloud higher
+               up the same file and the switch only decides WHEN one
+               appears. A module has no weapon file to point at, so here
+               the block itself IS the description. If you copy a weapon
+               file's "onKill": { "gas": true } into a module, nothing
+               happens and the build log says the block carries no
+               payload.
+
+               THE PAYLOADS - set at least one or no cloud is made:
+                 damagePerSecond   the cloud's own damage. The only
+                                   payload that scales, and the only one
+                                   that touches the fireproof Tablet.
+                 burnPerSecond     sets things alight using the game's
+                                   own fire. Cheap and stacks with
+                                   everything, but the game's burn damage
+                                   is FLAT - this buys duration, not
+                                   intensity.
+                 slow              0-1, fraction of speed bled per second.
+                 push              outward shove per second. NEGATIVE
+                                   PULLS IN, which is the better half.
+                 extinguish        takes burn OFF units inside, your own
+                                   ship included. A support cloud.
+                 igniteTerrain     sets the GROUND alight from the air.
+                                   The game only ever ignites terrain on
+                                   a projectile collision, so a cloud has
+                                   no other route to it.
+                 extinguishTerrain puts terrain fires out. CALIBRATE IT:
+                                   cell fire thresholds are not
+                                   normalised. CellType_Solid - ordinary
+                                   rock - ignites at 45 and is re-lit by
+                                   every burning neighbour each frame,
+                                   while Slime is 1, Tuff 1.3, Moss 2.5.
+                                   So 6 douses moss and can NEVER beat
+                                   rock. Use about 120 for stone.
+
+               THE SHAPE:
+                 duration          seconds each cloud lives. After the
+                                   payload this is the number that
+                                   decides what the module is.
+                 radius / grow / growTo / growTime
+                                   it swells from radius to growTo by
+                                   default, which reads most like gas.
+                                   "grow": false stalls it at one size.
+                 fade              seconds of fade-out at the end.
+                 max               how many clouds THIS MODULE may have
+                                   alive at once; the oldest FADES to
+                                   make room. The budget belongs to the
+                                   module, so two copies of the same card
+                                   share one allowance rather than
+                                   doubling it. 0 = unlimited.
+                 tickRate          seconds between applications, 0.25 by
+                                   default (what the game's own beams
+                                   use). NOT a strength knob -
+                                   damagePerSecond means per second
+                                   whatever this is. A tiny value is
+                                   LOUD, not strong: every application
+                                   drives a hit flash, a hit sound and
+                                   the aggro event.
+
+               "chains" - THE ONE TO UNDERSTAND. Default TRUE. A kill
+               scored BY A CLOUD leaves another cloud, so a packed room
+               chains through itself. That reads like a runaway and is
+               not one: every enemy dies exactly once and one death pays
+               out once, so the clouds a fight can produce are bounded by
+               how many things are in it. It walks through a crowd and
+               stops. Set false for one cloud per kill you scored
+               yourself.
+
+               "damageType" - LEAVE IT OUT almost always. Blank means the
+               cloud inherits the element of whichever gun scored the
+               kill, so it is resisted and coloured like that weapon.
+               That is what keeps ONE ship-grid module sensible across
+               every weapon you carry, and it is resolved per cloud, so
+               two clouds from one module can carry different elements.
+               Name one only when the MODULE is the source of the element
+               rather than the gun.
+
+               "hitPlayer" - off by default; the clouds cannot hurt you.
+               "extinguish" reaches you either way, because putting your
+               own fire out is the point of an extinguisher gas.
+
+               "sprite" - GAME sprites only, and blank is right for
+               nearly every cloud (the default is a generated soft blob).
+               Custom PNGs live in Weapon Forge's sprites folder and are
+               deliberately NOT read here: that loader rebuilds what it
+               returns at the module-icon size, 24x24 at PPU 40, which is
+               wrong for a puff. A multi-frame name only animates if you
+               ask - "name:0-8" or "name@12" - so nothing already written
+               starts moving on the next launch.
+
+               "sfx" plays ONCE PER CORPSE. With chains on in a crowded
+               room, that is a lot of one sound.
+
+               NOT PORTED FROM THE WEAPON SIDE, because they describe a
+               PROJECTILE and a module has none: the gas TRAIL (gas laid
+               along a flight path), puffGravity / puffDrag /
+               puffPierceTerrain (they edit the shot's rigidbody), and
+               impactOnly / bloomOnDeath / bloomOnImpact (they choose
+               where in a shot's life a cloud appears - a kill is one
+               instant). Their absence is deliberate, not an oversight.
+
+               The cloud shows on the module card: what it leaves, its
+               damage, burn and slow, and whether cloud kills chain.
+
+  ContactDamageEffect (aliases "contactDamage", "contact", "ram",
+                       "spikes")
+     { damage, damageType, scaleBySpeed, damagePerSpeed, minSpeed,
+       maxDamage, push, recoil, repeatDelay, detect, radius,
+       whileBoosting, ignoreSelfDamage,
+       tint, tintPulse, tintStrength, tintMode }
+
+  YOUR SHIP DAMAGES WHAT IT TOUCHES.
+
+  THE GAME HAS NO PLAYER CONTACT DAMAGE AT ALL, which is what makes
+  this worth a module rather than a tweak. Twelve enemy prefabs carry
+  a Hazard and four beak enemies carry a ChargerHead - but the ship's
+  own ImpactDamage is SELF damage, and the game only switches it on
+  while you are sprinting.
+
+  THIS ONE IS SHIP-ONLY AND WORKS THE SAME IN EITHER GRID, which is a
+  deliberate exception to how every other effect here is scoped. The
+  others use the free trick - a module in a weapon's grid affects that
+  gun, one on the ship grid affects all of them. The thing being armed
+  here is your HULL, and there is one hull however many guns are bolted
+  to it, so "only this weapon's hull is spiky" has no meaning. The card
+  says so out loud.
+
+    damage     FLAT damage per target touched, matching every stock
+               Hazard (a Maggot's beak is a flat 3).
+
+    damageType LEAVE IT BLANK for Health. That default is load-bearing
+               rather than lazy: a contact hit has NO WEAPON to inherit
+               an element from the way a projectile does, and the game
+               REFUSES damage with no type without saying anything.
+               That exact gap cost two test rounds on the weapon side -
+               "they bump into each other and doesnt seem to hurt one
+               another".
+
+    scaleBySpeed / damagePerSpeed / minSpeed / maxDamage
+               damage from HOW FAST YOU WERE GOING instead of the flat
+               number. This is what turns the module from "touching
+               things hurts them" into "ramming does" - minSpeed is a
+               floor you have to beat to hurt anything at all. The flat
+               "damage" value is IGNORED in this mode.
+
+    push       shove what you hit, along your direction of travel.
+    recoil     and bounce YOUR ship backwards, exactly as ChargerHead
+               recoils off what it bites. Without some of this a shoved
+               enemy ploughs away and the impact reads as nothing
+               having happened to you.
+
+    repeatDelay
+               seconds before the SAME target can be hit again, so
+               ploughing through a crowd hits each of them once rather
+               than the first one fifty times. Stock ChargerHeads use
+               0.3 and 0.5.
+
+    detect     HOW CONTACT IS NOTICED, and the wrong answer fails only
+               on your hardest hits - which reads as the feature being
+               unreliable rather than as a setting.
+
+               "swept" (the default) casts along where your ship will
+               be before the next physics step. That is ChargerHead's
+               own method, and the reason it exists: EVERY unit in this
+               game uses DISCRETE collision detection on a 0.02 second
+               step, so anything moving faster than about 50 units a
+               second skips a 1-unit object between steps. A boosting
+               ship is exactly that fast.
+
+               "collision" uses the stock Hazard's callbacks. Honest
+               for slow contact; misses the impacts a ram is for. Use
+               it to compare the two.
+
+    radius     how wide the check is. 0 takes it from your ship's own
+               collider, which is almost always right - the build log
+               prints what it resolved to, since it is derived per ship
+               rather than being a number anyone could look up.
+
+    whileBoosting
+               ARM IT ONLY WHILE BOOSTING. The more interesting design,
+               and the game's own precedent: the ship's ImpactDamage is
+               enabled by SetBoosted and off the rest of the time. A
+               dash costs fuel, so a boost-gated ram is a decision
+               rather than a passive. Off by default = a permanent hull
+               spike.
+
+    ignoreSelfDamage
+               SUPPRESS YOUR SHIP'S OWN CRASH DAMAGE while the module
+               is installed.
+
+               Worth knowing why this is here: ImpactDamage hurts YOU
+               on a hard impact and is live exactly while you boost -
+               so a ram module, used the way it wants to be used, hurts
+               its owner. This disables that one component rather than
+               granting invulnerability (which would block everything
+               else too), and RESTORES it when you pull the card. Off
+               by default, because taking the crash damage is an honest
+               trade.
+
+    tint / tintPulse / tintStrength / tintMode
+               a colour held on your ship while the module is live, so
+               a spiked hull looks like one. Its own "contact" layer,
+               so it composes with a crit flash rather than one
+               restoring over the other.
+
+  IT NEVER TOUCHES YOUR OWN SIDE - a minion you summoned sits on the
+  same layer as an enemy, and ramming your own swarm is the shape that
+  once made one eat itself.
+
+  A RAM KILL IS CREDITED, so on-kill rewards fire for it - including a
+  gas cloud on the corpse, which is the combination somebody will try
+  first. Note the game's own hazards do NOT do this: a Larva's beak
+  kill credits nobody.
+
+  TWO CONTACT MODULES ON ONE SHIP: the HIGHEST "damage" wins and its
+  push, recoil, radius, delay and tint come with it. Not summed, on
+  purpose - combining them would mean choosing whose repeatDelay and
+  whose radius as well, which is a resolution pass for a case nobody
+  asked for. The build log says so once per run.
+
+  NOT PORTED from Weapon Forge's version: "who": "marked" (making the
+  units a weapon has touched dangerous) and "enemies" / "all" (making
+  every enemy in the game dangerous). The first needs a per-hit weapon
+  path and is a different feature; the second is a world rule arming
+  things you do not own, which is a downside card wanting its own
+  design rather than a flag on this one.
+
+
+  ExecuteEffect (aliases "execute", "finish", "finisher")
+     { percent, flat, stackPercent, stackFlat, maxTargetHealth,
+       color, colorSeconds, colorPulse, tintStrength, tintMode, sfx }
+
+  FINISH anything your hit leaves under a threshold. The classic
+  execute: chip it low and it dies rather than limping away.
+
+  WHOSE HITS COUNT IS DECIDED BY WHICH GRID YOU PUT IT IN, the same
+  free scoping every effect here uses. In a WEAPON's grid, only that
+  gun executes. On the SHIP grid, every weapon you carry does. The
+  card says which.
+
+    percent    a FRACTION of the victim's own health pool. 0.15
+               finishes anything left below 15%.
+
+               WRITE IT AS A FRACTION. A value above 1 is read as a
+               percent and converted with a warning, because
+               "percent": 20 means "below 2000% health" - which every
+               living thing satisfies, so the module would delete
+               everything it touched and read as the mod being broken
+               rather than as a typo.
+
+    flat       an ABSOLUTE amount instead of a share. Whichever of the
+               two is satisfied FIRST wins, so one card can say "under
+               15% OR under 20 health" and catch the chaff and the big
+               one at once.
+
+    stackPercent
+               WHAT A SECOND COPY OF THIS MODULE ADDS. Each copy of this
+               same module past the first adds this to "percent":
+               "percent": 0.2 with "stackPercent": 0.1 is 20% for one
+               card, 30% for two, 40% for three. A fraction, like
+               percent (above 1 is read as a percent). 0 - the default -
+               means copies do NOT stack and the strongest one counts,
+               which is how every file without this key reads.
+               Only copies of THIS file stack: a different execute module
+               still counts on its own, strongest wins. The strongest
+               copy is the base (a BoosterCore beside one raises its own
+               level), the stack goes on top, and the smallest boss
+               guard among the copies holds. The card shows the stack
+               you are carrying ("2 COPIES  below 30% health"), and the
+               build log prints what 2, 3 and 4 copies come to.
+
+    stackFlat  the same idea for "flat": each extra copy adds this much
+               health to the flat threshold. 0 = no stacking.
+
+    maxTargetHealth
+               THE BOSS GUARD, and it matters more than it looks. Skip
+               anything whose health POOL is larger than this. 0 means
+               no limit and the build log warns you: a 15% execute on
+               a 2000-health boss is 300 free damage in a single hit,
+               which is a different module than the finisher you think
+               you are making.
+
+               Deliberately NOT per-level - a cap that moves with level
+               is a cap that quietly stops protecting you at the level
+               you were relying on it.
+
+    color / colorSeconds / colorPulse / tintStrength / tintMode / sfx
+               the cue. THE GAME ANNOUNCES NOTHING on its own - there
+               are no floating damage numbers anywhere in PUNK - so
+               without one an execute is invisible and just reads as
+               the enemy dying. The tint goes on its own "execute"
+               layer, so an execute flash and a crit flash on the same
+               frame compose rather than one restoring over the other.
+
+  THE KILL CREDITS ITSELF, which is worth knowing because it makes
+  this compose with everything: the game's own death check runs AFTER
+  the damage call returns, so finishing a unit there is seen by the
+  same line that credits an ordinary kill. On-kill rewards, leech, a
+  gas cloud on the corpse and the music controller all fire normally.
+
+  WHAT IT WILL NEVER EXECUTE, and each falls out rather than being a
+  rule:
+    - anything killed by a BURN TICK, a GAS CLOUD or a CELL - those
+      report no weapon, so the threshold is never even asked.
+    - anything the hit did not actually hurt. Damage is refused three
+      silent ways (a damage blocker, i-frames, or the target having no
+      tank of that damage type - which is how a Crawler resists nearly
+      everything), and on any of them the health is untouched.
+    - anything with no tank of the type you hit. That one is the
+      dangerous case: its health reads 0, which looks exactly like
+      "nearly dead".
+    - YOURSELF or anything on your side, so a minion caught in your own
+      blast is safe.
+
+  IT DOES NOT STAND DOWN FOR WEAPON FORGE, unlike crit and leech.
+  Those two have to, because two engines would each roll their own
+  dice or each pay out their own healing. An execute is idempotent -
+  the second one to look finds the target already dead and stops - so
+  a weapon's own execute block and a module's simply both apply, which
+  is what "two independent sources" should mean. The only cost is that
+  which mod's colour and sound you see is arbitrary.
+
+
+  GrowEffect (aliases "grow", "growth", "growingshot")
+     { from, to, span, overTime, hitbox, curve, clamp }
+
+  YOUR SHOTS CHANGE SIZE AS THEY TRAVEL - a pinprick that arrives as a
+  wrecking ball, or a fat slug that tapers away to nothing.
+
+    from       starting size as a MULTIPLIER of the shot's normal
+               size, so 1 is unchanged. 0.4 launches at under half.
+    to         size at the end of the ramp. Below "from" SHRINKS
+               instead, which is a real weapon and not a mistake - the
+               card says SHRINKS when you do it.
+    span       how far (world units) or how long (seconds, with
+               overTime) the ramp takes.
+
+               LEAVE IT AT 0 for the answer you usually want: each shot
+               borrows its OWN range or lifetime, so it peaks exactly
+               as it runs out - whatever gun the module ends up beside,
+               which a module cannot know in advance.
+
+               Note a LOBBED shot's range is inert in this game: the
+               engine computes a time from it once at launch and never
+               enforces it, and every stock lobbed weapon ships it
+               disabled. So a distance ramp on a grenade falls back to
+               10 units.
+
+    overTime   measure in SECONDS ALIVE instead of DISTANCE TRAVELLED.
+               Distance is what "grows as it flies" usually means and
+               looks right on a fast shot; time is the one for
+               something that hovers, arcs or slows down.
+
+    hitbox     DEFAULT TRUE, and this is the switch that decides
+               whether this is a weapon change or a paint job.
+
+               The game rebuilds each shot's collision sweep from its
+               Radius EVERY frame, so growing that number grows the
+               real damage volume - what you see and what hits are
+               driven by one value, with nothing to keep in step.
+
+               IT CANNOT BE HONOURED ON A LOBBED OR ROCKET WEAPON.
+               Those collide with a real Collider2D that scales with
+               the sprite, so there is no separate radius to hold
+               still and the hitbox grows regardless. The build log
+               says so rather than pretending.
+
+    curve      shape of the ramp. 1 is steady. ABOVE 1 stays small and
+               swells late - 3 means it is near its starting size for
+               most of the flight and blows up at the end. Below 1
+               swells fast then eases.
+    clamp      DEFAULT TRUE, stop at "to". Off keeps it growing for as
+               long as the shot lives, which on a slow or long-lived
+               shot gets very large - that is the point, but know it
+               before firing indoors.
+
+  THERE IS NO DAMAGE MULTIPLIER HERE, and that is a constraint rather
+  than an oversight. Weapon Forge's version can raise damage at full
+  size because it publishes into a damage STACK - one captured base per
+  shot, every contributor multiplied, order-independent. This mod has
+  no such stack, and it already has something writing projectile damage
+  in flight: a pierce module's falloff multiplies it on every target a
+  shot passes through. A grow multiplier writing from its own base each
+  frame would erase that falloff on the next one, and both logs would
+  report success. Size and hitbox are the whole headline; the damage
+  ramp needs the stack ported first.
+
+  TWO GROW MODULES ON ONE GUN: only one ramp applies, and the build log
+  says so once per run. They cannot be combined in any way you could
+  predict - two 0.4-to-3 ramps multiplied would be 0.16-to-9, a
+  different weapon than either, and averaging gives neither. A module
+  in the WEAPON's own grid wins over one on the ship grid.
+
+
+  WindupEffect (aliases "windup", "rampUp", "spool")
+     { windUpTime, windDownTime, grace, ramp, steps,
+       rate, fireRateAtFull, accuracy, accuracyAtFull, spreadAtFull,
+       damage/damageAtFull, pellets/pelletsAtFull, cheaper/costAtFull,
+       speed/speedAtFull, range/rangeAtFull, size/sizeAtFull,
+       burst/burstAtFull/burstDelayAtFull, burn/burnAtFull,
+       explosion/explosionAtFull, push/pushAtFull/knockbackAtFull,
+       warmup/warmupAtFull, lifetime/lifetimeAtFull,
+       showOnHud, readySfx, stepSfx, lostSfx }
+
+  HOLD THE TRIGGER AND THE GUN GETS BETTER. The mirror of an overheat:
+  instead of degrading as you lean on it, it winds up.
+
+  *** IT IS NOT CALLED "spinUp" HERE, AND THAT IS ON PURPOSE. ***
+  Weapon Forge calls this exact feature "spinUp". In THIS mod that word
+  was already taken before this existed: "type": "spinup" is an alias
+  on ExtraWeaponStatEffect pointing at the game's own "warmupTime" -
+  the flat delay before a gun starts firing, one number, applied once,
+  no meter and no reward. Writing "spinup" in a module still gets you
+  that, and the build log now warns and points here. The two mods
+  spell one idea two ways because the collision was real; everywhere
+  else they agree deliberately.
+
+    windUpTime   SECONDS OF SUSTAINED FIRE to reach full.
+
+                 What counts as firing is the game's own definition -
+                 the trigger is down, you can afford the shots, and
+                 nothing is blocking the gun. So an EMPTY GUN DOES NOT
+                 WIND UP, and a jam or a stun costs you the wind-up you
+                 had. That falls out of the definition rather than
+                 being a special case.
+
+                 Per level, and like slow's "amount" THE PER-LEVEL BOX
+                 WANTS A NEGATIVE NUMBER, since getting there faster is
+                 a smaller number. -1 or -2 is fine.
+
+                 IT IS FLOORED AT 0 AND NEVER GOES NEGATIVE, and at 0
+                 the gun is fully wound from the first shot - a
+                 different module, with no ramp left to feel. That is
+                 reachable by ordinary numbers rather than by typing
+                 0: base 2 with -1 per level is 2s, 1s, then ZERO at
+                 level 3, which one BoosterCore can reach. The build
+                 log works out that level and names it, and the card
+                 reads "instant - full from the first shot" rather
+                 than "0s of firing".
+
+    windDownTime seconds to fall back to nothing once you stop. The
+                 rewards are withdrawn as it falls, so the gun is
+                 handed back gradually. Pulling the module out of the
+                 grid runs this same wind-down rather than cutting.
+    grace        seconds off the trigger before the wind-down even
+                 starts - the trigger-discipline knob. Without it,
+                 tapping keeps the bonus for free.
+    ramp         "smooth" (default), "stepped" or "click".
+
+                 stepped awards the reward in whole stages, each one
+                 announced by stepSfx - pick it if you want the player
+                 to feel a threshold. click is smooth but holds the cue
+                 back so reaching FULL is a moment you can hear.
+    steps        how many stages in stepped mode. 1 is the same as
+                 smooth and the log says so.
+
+  THE REWARDS - each is a switch plus its own "at full" multiplier,
+  and all seventeen are the same set the weapon side pays:
+
+    rate         DEFAULT ON. x2 fire rate at full by default. The game
+                 recomputes the gap between shots fresh every frame, so
+                 this shortens the gap you are ALREADY waiting through.
+    accuracy     DEFAULT ON. Tightens the random scatter.
+
+                 *** MOST STOCK WEAPONS SHIP angleVariance AT ZERO ***
+                 - Popper, Shotgun, Bolt, Worm - so on those there is
+                 nothing to remove and you will see no change. The
+                 build log says so. A shotgun's fan is "spread", a
+                 different field, left alone unless you set
+                 spreadAtFull (below 1 tightens it, which turns a
+                 shotgun into a slug gun - the point, or a surprise).
+
+                 accuracyAtFull is the FRACTION OF SCATTER REMOVED, so
+                 1 is pinpoint and 0.5 halves it.
+
+    damage, pellets, cheaper, speed, range, size, burst, burn,
+    explosion, push, warmup, lifetime
+                 all off by default, all the same shape. Notes worth
+                 having: pellets rebuilds the weapon's visuals on every
+                 whole-number change (a BEAM indexes its visual list
+                 with no bounds check every frame, so a count that rose
+                 behind its back would throw sixty times a second);
+                 size grows the real HITBOX, not just the art;
+                 explosion scales radius AND damage together; and
+                 knockbackAtFull is YOUR recoil, left at 1 because
+                 being shoved harder is a cost unless you meant it.
+
+  FEEDBACK
+    showOnHud    DEFAULT ON - a WOUND UP readout with the percentage,
+                 through this mod's buff indicator.
+
+                 *** THERE IS NO MUZZLE TINT HERE *** unlike the
+                 weapon-side version, which colours the muzzle flash as
+                 the meter fills. That rides a muzzle-flash layer table
+                 this mod does not have, and building one is its own
+                 job. The HUD readout is arguably the better fit
+                 anyway: a module applies to every gun you carry, so a
+                 per-weapon muzzle colour would be the more ambiguous
+                 signal.
+
+    readySfx     plays the moment it reaches full.
+    stepSfx      plays on each step crossed, in stepped mode.
+    lostSfx      plays when a fully wound gun has wound all the way
+                 back down - so losing it is something you notice
+                 rather than something you discover.
+
+  *** GADGET WEAPONS CANNOT BE REACHED. *** The meter is driven by the
+  held trigger, and gadgets fire directly without ever touching the
+  trigger machinery - so a windup module beside a gadget does nothing.
+  The weapon-side version REFUSES a gadget at build time and says so,
+  because a weapon file names its own slot. A module cannot: you choose
+  the slot, so there is no build-time moment at which the question can
+  be asked. Instead the card says "Needs: a held trigger (not gadgets)"
+  and the log warns the first time such a weapon fires.
+
+  WHICH GRID DECIDES THE SCOPE, free, as with crit, execute and slow:
+  in a WEAPON's grid only that gun winds up; on the SHIP grid every
+  weapon does. The card says which.
+
+  TWO WINDUP MODULES: only one ramp applies, and the one in the
+  weapon's own grid wins. They cannot be combined in any way you could
+  predict - two ramps multiplied would be a third weapon that is
+  neither, and averaging their times describes neither card. Same
+  answer as two grow modules, for the same reason.
+
+  WITH WEAPON FORGE INSTALLED, a weapon's own "spinUp" block and this
+  module BOTH apply and MULTIPLY, which is correct rather than a
+  conflict: both publish into one table that keeps a single captured
+  base per stat and multiplies the named contributors. No coordination
+  was needed beyond making sure the two use different names for their
+  contributions - which the rename gave for free.
+
+
+  SlowEffect (aliases "slow", "chill", "timeSlow", "hitStop")
+     { amount, duration, mode, floor, maxStacks, cooldown,
+       slowMove, slowTurn, slowFire, slowShots, slowKnockback,
+       tint, tintStrength, tintMode,
+       timeSlow, timeScale, timeDuration, timeCooldown,
+       timeEase, timeUnscaled, timeMode, onHit, onKill, debuff }
+
+  TWO SEPARATE THINGS THAT BOTH MAKE A HIT LAND, in one block because
+  they are usually wanted together:
+
+    the DEBUFF     cripples the thing you hit. You stay at full speed.
+    the TIME BEND  slows EVERYTHING for a moment, you included -
+                   hit-stop. It needs no victim at all.
+
+  They share no mechanism, and either works without the other.
+
+  -- THE DEBUFF ------------------------------------------------------
+
+    amount     THE TARGET FRACTION OF NORMAL SPEED, so LOWER IS
+               STRONGER. 0.5 is half speed, 0.2 is a crawl, 1 is
+               nothing. A value above 1 is read as a percent and
+               converted with a warning - "amount": 50 would otherwise
+               mean fifty times normal speed, a speed-up module.
+
+               PER LEVEL, and THIS IS THE ONE SERIES ON THE PAGE WHOSE
+               "per level" BOX WANTS A NEGATIVE NUMBER, because a
+               stronger slow is a smaller number.
+
+    duration   seconds it lasts. Floored at 0.05. Unlike timeDuration
+               below, 0 here does NOT mean forever.
+    mode       what a SECOND hit on an already-slowed target does.
+               "refresh" (default) resets the timer. "stack" slows
+               harder each time - the amount is raised to the power of
+               the stack count, so two stacks of 0.5 is 0.25 - down to
+               "floor". "ignore" lets the first hit run out untouched.
+    floor      THE STRONGEST A STACK CAN EVER GET, so it has to be
+               BELOW "amount". The real factor is max(amount, floor),
+               so "amount": 0.1 with the default floor of 0.2 is
+               really a 20% slow wearing a 10% label. The build log
+               warns when they are the wrong way round.
+    maxStacks  how many times "stack" can compound. 1 behaves exactly
+               like refresh and the log says so.
+    cooldown   seconds before the same target can be re-slowed at all.
+               0 (default) is usually right - the factor is recomputed
+               from the ORIGINAL each time rather than compounded, so
+               a piercing beam re-slowing every tick costs nothing.
+
+    slowMove       DEFAULT TRUE - how fast it travels.
+    slowTurn       DEFAULT TRUE - how fast it turns to face you. Most
+                   of what makes a slow feel like a slow.
+    slowFire       DEFAULT TRUE - the victim's own fire rate.
+    slowShots      DEFAULT TRUE, and the half you can actually see:
+                   slowFire changes how OFTEN it shoots, this changes
+                   how FAST THE BULLETS TRAVEL, so you can dodge them.
+    slowKnockback  DEFAULT TRUE - makes it LIGHTER, so your shots and
+                   blasts throw it further. Its own locomotion is
+                   unaffected.
+
+    tint, tintStrength, tintMode
+               a colour held on the victim for as long as it is
+               slowed, cleared when the debuff expires rather than
+               timed separately so it cannot flicker off mid-slow.
+               Multiply can only darken; neither mode can brighten
+               dark art, so pick a saturated colour.
+
+  WHY IT TOUCHES THE RIGIDBODY AND NOT THE MOVEMENT SETTINGS, because
+  it explains the shape of every knob above. A unit carries one
+  movement component PER AI STATE, and the game snapshots that
+  component's values when a state begins and restores them wholesale
+  when it ends. A slow written there is reverted at the next state
+  change - and, worse, if a state happens to BEGIN while the unit is
+  slowed, the slowed numbers become that state's "original" and are
+  restored forever after. A temporary debuff would become PERMANENT,
+  at random, depending on AI timing. Nothing snapshots the rigidbody,
+  so movement is its linear damping, turning its angular damping,
+  and knockback its mass.
+
+  -- THE TIME BEND ---------------------------------------------------
+
+    timeSlow       turn it on. Set automatically if you give a
+                   timeScale, so you rarely need this key.
+    timeScale      how slow time runs - 0.35 is a third speed. The
+                   game takes the STRONGEST live bend rather than
+                   compounding them, so overlapping ones cannot run
+                   away.
+    timeDuration   how long, in REAL seconds.
+
+                   *** 0 OR LESS MEANS FOREVER IN THIS GAME. ***
+                   The engine treats a non-positive duration as
+                   indefinite and never checks it for expiry, so it
+                   would hold the whole game in slow motion for the
+                   rest of the run. Clamped to 0.01 with a warning,
+                   but do not rely on that.
+
+    timeCooldown   the least time between two bends.
+
+                   *** SET THIS ON A SHIP-GRID MODULE. *** A module
+                   applies to every gun it is connected to, so on the
+                   ship grid this fires on every hit from EVERY weapon
+                   you carry - and a beam or a shotgun re-triggers it
+                   several times a second, which reads as the game
+                   stuttering rather than punching. The weapon version
+                   never had this problem, because a weapon's timeSlow
+                   only ever fires for that weapon. About 1 is a good
+                   start, or use onKill instead. The build log warns
+                   when there is no cooldown at all.
+
+    timeEase       DEFAULT TRUE - ride back up to normal across the
+                   duration instead of snapping. Most of what makes
+                   hit-stop feel good.
+    timeUnscaled   DEFAULT TRUE and you want it. With it off the
+                   engine measures the bend with the clock it has just
+                   slowed, so a 0.25s bend at scale 0.2 really lasts
+                   1.25 seconds - and the heavier the slow the further
+                   it overruns.
+    timeMode       only "ignore" means anything: it drops a new bend
+                   while one is still running.
+
+  -- BOTH ------------------------------------------------------------
+
+    onHit      DEFAULT TRUE - fire on every hit that connects.
+    onKill     also fire when the hit KILLS. Independent triggers, so
+               a card can do a small debuff on every hit and save the
+               time bend for the kill - the combination worth trying
+               first, since it needs no cooldown. A dead thing is not
+               debuffed (there is nothing left to slow), so on a kill
+               this means the time bend.
+    debuff     DEFAULT TRUE. Off makes a pure hit-stop module. The
+               build log refuses a card with this off and no timeSlow.
+
+  WHICH GRID DECIDES THE SCOPE, free, as with crit and execute: in a
+  WEAPON's grid only that gun slows; on the SHIP grid every weapon
+  does. The card says which. It never touches you or your own side.
+
+  DAMAGE OVER TIME CANNOT SLOW. Burn ticks, cell damage and a gas
+  cloud's damage reach the game by a different route and report no
+  weapon at all, so there is nothing for a module to match against.
+  That falls out of how kills are attributed rather than being a rule.
+
+  TWO SLOW MODULES: the STRONGEST wins, per half, and the two halves
+  are resolved separately - so a card carrying only a debuff and a
+  card carrying only a time bend both apply. Ties are broken by the
+  longer duration, so the answer never depends on which card you
+  placed first. They are not added: two halving modules are not a
+  total stop in any sense you could predict.
+
+  *** "slow" IS ALSO A KEY INSIDE THE GAS BLOCK, AND IT IS A
+  DIFFERENT THING. *** KillRewardEffect's "gas.slow" is a per-tick
+  velocity drag applied to anything standing in the cloud - no
+  duration, no restore, no fire-rate change. Weapon Forge spells both
+  the same way, so the two mods agree, but one word covering two
+  mechanisms is worth knowing before you go looking for the wrong one.
+
+  WITH WEAPON FORGE INSTALLED, that mod owns the debuff and a slow
+  module's settings are applied through its engine - the build log
+  says so. This is not a limitation, it is the only arrangement that
+  works: both mods' live debuffs remember the victim's ORIGINAL speed
+  and weight, so with two of them the second to arrive remembers the
+  already-slowed numbers and restores to THOSE. The enemy would stay
+  crippled for the rest of the run, with both mods reporting a correct
+  restore. The TIME BEND still runs here whichever mods are installed,
+  because the game's own time manager takes the strongest live bend
+  and so arbitrates for us.
+
 
   CritEffect (alias "crit")
      { chance, multiplierBonus, roll, overflow,
@@ -321,6 +1167,49 @@ put one in decides its SCOPE, and that is free rather than a flag:
                read as very dark. That compounding is deliberate - it is
                what makes stacked debuffs legible - but it is a lot.
 
+    tintMode   "multiply" (the default) or "replace".
+
+               IF YOU HAVE TURNED THE STRENGTH UP AND IT STILL IS NOT
+               OBVIOUS, THIS IS THE KNOB YOU WANT. A multiply can ONLY
+               DARKEN - your colour is multiplied into the sprite's own,
+               so it moves the pixel toward black and never toward the
+               colour. A pale flash over a dark grey Cross barely
+               registers while the same flash over a pale Fly reads
+               clearly, which is the "some enemies look tinted and
+               others not so much" report. And no strength value fixes
+               it: at 1 a multiply is already as strong as a multiply
+               gets.
+
+               "replace" stops your colour COMPOUNDING - it sets the
+               tint factor to your colour rather than multiplying it
+               into whatever the prefab and the other live layers
+               already put there, so it is the strongest a tint can be.
+               Reach for it when the tint is a READOUT you need to spot
+               in a fight.
+
+               BUT NEITHER MODE CAN BRIGHTEN DARK ART. A sprite's
+               colour is a VERTEX MULTIPLY IN THE SHADER, so the pixel
+               you see is always "texture x colour" and the most any
+               tint can do is "texel x yours". The Fly's body art
+               averages 40/255 luminance - 16% grey - against 76 for
+               its beak, which is why a crit flash reads on the mouth
+               and barely on the body. Pick a colour that survives a
+               multiply (saturated reds, oranges, greens - not pale
+               pastels), or use "colorPulse", since motion is visible
+               at any brightness.
+
+                   "tintMode": "replace", "tintStrength": 0.8
+
+               "colorMode" is accepted as a spelling of the key, and
+               "tint" as a spelling of multiply - Weapon Forge's minion
+               "colorMode" already calls the same two things "replace"
+               and "tint", and two vocabularies for one idea across the
+               two mods is a bug report waiting to happen.
+
+               Multiply resolves first and replace paints over the
+               result; two replace layers average rather than
+               overwriting.
+
                WITH WEAPON FORGE INSTALLED that mod owns the crit patch,
                so the LOOK comes from the weapon's own "crit" block and
                this is announced rather than applied. Set it on the
@@ -328,7 +1217,7 @@ put one in decides its SCOPE, and that is free rather than a flag:
                Forge takes the same key on nine different blocks.
 
     sfx        a distinct sound. Use the READABLE NAME of any of the
-               game's own sounds - "Cells/Fuel", "UI/Click",
+               game's own sounds - "Cells/Fuel", "UI/OK",
                "Weapons/Popper/Shoot" - all 259 are listed in
                SOUNDS.txt next to this file. A raw sound id still
                works. Or the name of a CUSTOM sound - but custom
@@ -984,6 +1873,113 @@ WEAPON effects (use with "target": "weapon"):
      is the useful direction - a faster ramp - and note warmup is inert
      on gadget-fired weapons, which bypass the Shooter entirely.
 
+  WeaponCosmeticEffect { shootSfx, continuousShootSfx, startSfx,
+                         releaseSfx, warmupSfx, reloadSfx,
+                         muzzleParticle, reloadParticle,
+                         shake, shakePreset, rumble, rumblePreset }
+     HOW THE WEAPON FEELS, without changing a single number. The ten
+     properties on WeaponBase that no stock effect can reach: six sound
+     ids, the muzzle flash and the reload puff, the camera kick and the
+     controller rumble. Nothing here affects damage, rate or anything
+     else a stat line would show - it is pure presentation.
+
+     Aliases: "cosmetic", "feel", "shake", "rumble", "muzzle",
+     "weaponsfx", "weaponcosmetic".
+
+     WEAPON GRID ONLY. Like every effect that modifies a weapon, this
+     one only runs for a module connected to a WEAPON's grid. On the
+     ship grid it does nothing at all - and it cannot warn you at
+     runtime, because the effect simply never runs. The build log says
+     so when the module is built.
+
+     THE SOUNDS
+       "shootSfx"            every shot
+       "continuousShootSfx"  the loop a HELD weapon makes (beams,
+                             miniguns). Nothing starts the loop on a
+                             weapon that fires discrete shots.
+       "startSfx"            once, when you pull the trigger
+       "releaseSfx"          once, when you let go
+       "warmupSfx"           the spin-up whine, if the gun has a warmup
+       "reloadSfx"           on reload
+
+     A game sound is named the way the audio database names it, with
+     slashes - "Weapons/Shotgun/Shoot". All 259 are listed in
+     SOUNDS.txt next to this file, 44 of them under WEAPONS. A custom
+     .wav from Weapon Forge's sounds folder works too when that mod is
+     installed. "shootSfx" also answers to "sfx" or "sound".
+
+     A NAME THE MOD CANNOT FIND IS REFUSED, NOT ASSIGNED, and that is
+     deliberate: an unknown sound id plays nothing at all, so writing
+     a typo through would leave the gun SILENT rather than merely
+     unchanged - a cosmetic module doing damage. The weapon keeps its
+     own sound and the log names the file and the key.
+
+     Note about 70 of the 259 entries are declared with NO CLIP. They
+     resolve perfectly and play nothing; SOUNDS.txt marks every one.
+
+     THE MUZZLE FLASH
+       "muzzleParticle": "MuzzleParticle Laser"
+     Swaps the whole particle prefab, so shape and colour change
+     together. The eleven the game ships are "MuzzleParticle" plus
+     Beacon, CrawlerLaser, Cross, CrossAlpha, Drone, Fly, Laser,
+     LaserRed, Popper, PopperRed and Sniper. "reloadParticle" is the
+     same idea for the reload puff and is rarely worth setting.
+
+     (Weapon Forge's muzzleColor / muzzleSprite keys RESHAPE a weapon's
+     existing flash. Use those for fine control over a weapon you
+     wrote; use this to swap one wholesale on any gun you pick up.)
+
+     THE CAMERA KICK - TWO WAYS TO ASK, and the first is the one you
+     want:
+
+       "shake": 1.5        MULTIPLY the weapon's own kick
+       "shakePreset": "Shake_Gunshot_Medium"   REPLACE it
+
+     Scaling works on any gun without naming anything, and it keeps
+     that gun's own character - the vibrato, the randomness, the angle
+     - instead of flattening every weapon into the same thump. It
+     scales STRENGTH ONLY, never duration: "harder" and "longer" are
+     different asks, and a stretched shake is nausea rather than
+     feedback. Capped at 5x.
+
+     A WEAPON WITH NO KICK OF ITS OWN HAS NOTHING TO MULTIPLY, so
+     "shake" does nothing there and the log says so. That is not an
+     oversight - inventing a kick on a gun that never had one is a
+     decision, especially for a BEAM, which fires continuously and so
+     would shake every frame. Use "shakePreset" to make it deliberately.
+
+     The twelve stock presets: Shake_Gunshot_Small, Shake_Gunshot_
+     Medium, Shake_Collision, Shake_Excavate, Shake_Explosion_MIN,
+     Shake_Explosion, Shake_Explosion_Long, Shake_Explosion_MAX,
+     SmallExplosion, LargeExplosion, Shake_Shipdamage, Shake_Wound.
+
+     Set both and the named preset wins - naming one is the deliberate
+     act, the number is only an adjustment to the weapon's own.
+
+     THE RUMBLE works exactly the same way ("rumble" scales,
+     "rumblePreset" replaces), with one caveat worth reading:
+
+     RUMBLE IS GAMEPAD ONLY. On keyboard and mouse it does nothing at
+     all, and even on a pad it is scaled again by the rumble setting in
+     the game's options. So this is a key that can do nothing for a
+     player through no fault of yours. The module card prints
+     "RUMBLE (PAD)" rather than leaving them to guess, and the build
+     log says it once. Motor speeds are clamped to the hardware's 0-1
+     range, so a big multiplier on an already-strong preset simply
+     reaches maximum.
+
+     The eight stock presets: "Rumble WeaponShot" plus Small, Medium,
+     Large, Flame or Derbis, and "Rumble Ship" plus Boost, Damage or
+     Death.
+
+     "shake" and "rumble" are both SERIES, so a green-crate BoosterCore
+     beside the module can make the kick grow with its level.
+
+       { "type": "cosmetic",
+         "shootSfx": "Weapons/Shotgun/Shoot",
+         "muzzleParticle": "MuzzleParticle Sniper",
+         "shake": 1.6 }
+
   WeaponResourceEffect { resource, free }
      Changes WHICH RESOURCE the weapon spends - a Caps gun that runs on
      Electron. A different kind of module from "+10% fire rate": it
@@ -1092,7 +2088,13 @@ frame".)
  6. ICONS & COLOR
 ----------------------------------------------------------------
 
-Icons are module sprites named "HUD_GridTiles_NN" or "HUD_Modules_NN".
+Icons are module sprites named "HUD_GridTiles_0" to "_44" or
+"HUD_Modules_0" to "_35". THEY ARE NOT ZERO-PADDED: it is
+"HUD_GridTiles_7", not "HUD_GridTiles_07". A padded name resolves to
+nothing at all - the build log used to describe the convention as
+"HUD_GridTiles_NN", which reads as two digits and is where the padding
+comes from. Both mods now accept a padded name, use the right asset,
+and tell you the real spelling.
 
 ALL 81 OF THEM ARE LISTED IN "MODULE ICONS.txt" next to this file,
 with which stock module uses each one - and "Module Icons.html" DRAWS
@@ -1128,6 +2130,77 @@ source:
           registered, so it is handy for parking a definition, or for
           testing something without it cluttering your runs.
 shopPrice        cost in money (default 100)
+
+PAYING WITH INGREDIENTS AS WELL AS MONEY  ("shopCost")
+------------------------------------------------------
+The shop's price is a LIST of currencies, not a number, and the game
+already draws one icon per currency and reddens the ones you cannot
+afford. So this needed no new UI - only the keys to fill the list.
+
+  "shopPrice": 400,
+  "shopCost": { "Chip": 1, "Fiber": 2 },
+
+That costs 400 money AND 1 Chip AND 2 Fiber, and the shop shows all
+three. Ingredients stack ON TOP of the money price - which is what
+every one of the game's own 62 shop entries does. For an
+ingredient-only cost, write "shopPrice": 0.
+
+THE FIVE THE GAME ACTUALLY TRADES IN:
+  Chip        Fiber       Gland       Powerstar       Generator
+
+  Two of those are stored under a different name than the one on
+  screen - Fiber is "Coral" and Generator is "Shell" - and BOTH
+  spellings are accepted, because the name you saw in game is the one
+  you are going to type.
+
+  Four more exist and NOTHING IN THE GAME HANDS THEM OUT: Bond, Ex,
+  Face and Strange Ball. They are accepted with a warning rather than
+  refused (a game update could start dropping them), but a price in
+  one of them can never be paid.
+
+  You can also name any ship RESOURCE - "Tech", "Purple", "Fuel" -
+  and it is taken off that tank.
+
+WHOLE UNITS ONLY. The shop counts in integers, so 0.5 is zero and is
+dropped with a warning. That is a crash guard as much as tidiness:
+the game's purchase code subtracts a currency WITHOUT checking the
+ship can hold it, while the can-I-afford check quietly answers "you
+have 0" - and a cost of 0 is the one value that passes the check and
+then dereferences nothing on the way out.
+
+MAKING IT MORE EXPENSIVE EACH TIME  ("shopCostIncrement")
+  "shopCost": { "Powerstar": 1 },
+  "shopCostIncrement": { "Powerstar": 1 },
+
+  Adds one more Powerstar to the price after every purchase, exactly
+  the way "shopPriceIncrement" does for money. The game matches an
+  increment to the price of the SAME currency, so you can escalate the
+  money and leave the ingredient flat, or the other way round. An
+  increment naming a currency that is not in "shopCost" is dropped -
+  there would be nothing for it to raise.
+
+HIDING IT UNTIL YOU HAVE FOUND ONE  ("shopUnlock")
+  "shopUnlock": "Powerstar"          (or a list: ["Chip","Powerstar"])
+
+  Keeps the item out of the shop entirely until you have picked up
+  that ingredient at least once this run. It is the game's own gate -
+  seven stock items use it.
+
+  It is DELIBERATELY SEPARATE FROM THE PRICE. The stock items always
+  pair the two (the Fiber item is hidden until you find Fiber), but
+  they answer different questions, so you can gate on one thing and
+  charge another. Leave it out and the item is on sale from its
+  unlock level as usual, showing a red price you cannot pay yet.
+
+  A GATED ITEM IS NOT TIED TO A STATION TIER. Once you have found the
+  ingredient it appears in the next shop you open, whatever
+  "shopUnlockLevel" says - that is how the game's own gated items work
+  (they are added as a shop opens, never rolled from a station's list).
+  The build log says so: "Added ... HIDDEN until you have found
+  Powerstar". Until 2026-09-27 a gated item was ALSO put in the
+  station's list, which ignores the gate, so it could be on sale at the
+  very first station (R19 test 270). Fixed.
+
 shopPriceIncrement  how much is ADDED to the price every time the module
                  is bought (default 0 = the price never changes).
 

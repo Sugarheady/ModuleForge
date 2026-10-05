@@ -67,8 +67,9 @@ The DLL lands in `ModuleForge\bin\Debug\ModuleForge.dll`. Copy it into
 On first run the mod creates a `modules` folder next to itself, with a `README.txt` and examples.
 
 > **There is no hot reload.** Module JSON is read once at startup, so every change needs a full game
-> restart. A malformed file is skipped and the reason is logged — search `BepInEx\LogOutput.log` for
-> `ModuleForge`.
+> restart. A malformed file is skipped and the reason is logged to the mod's own
+> `BepInEx\ModuleForge.log` (the launch before is `ModuleForge.prev.log`). `LogOutput.log` keeps only the
+> load lines and a copy of every error.
 
 ## Notes
 
