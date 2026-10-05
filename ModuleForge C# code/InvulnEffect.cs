@@ -15,7 +15,8 @@ namespace ModuleForge
     // they add, and three cheap cards should not add up to permanent
     // invulnerability. The controller takes the longest request.
     [Serializable]
-    public class InvulnEffect : ModuleEffect, IHasDescriptionForUnit
+    public class InvulnEffect
+        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeLive.IGated
     {
         public FloatSeries seconds;
 
@@ -44,12 +45,35 @@ namespace ModuleForge
             base.OnInstalled(unit);
             _owner = unit;
             Push(unit);
+            ModuleForgeLive.Track(this, unit);
         }
 
         public override void OnUninstalled(Unit.Data unit)
         {
             base.OnUninstalled(unit);
+            ModuleForgeLive.Untrack(this);
+            Release(unit);
+        }
 
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+            {
+                _owner = unit;
+                Push(unit);
+            }
+            else
+            {
+                Release(unit);
+            }
+        }
+
+        // The one owner of the teardown, so uninstall and the powered gate
+        // cannot drift apart.
+        private void Release(Unit.Data unit)
+        {
             var inv = ModuleForgeInvuln.For(unit ?? _owner);
 
             if (inv != null)

@@ -23,7 +23,8 @@ namespace ModuleForge
     // falls back to the primary anyway. `_weapon` is that test.
     [Serializable]
     public class LeechEffect
-        : ModuleEffect, IWeaponModifier, IHasDescriptionForUnit
+        : ModuleEffect, IWeaponModifier, IHasDescriptionForUnit,
+          ModuleForgeLive.IGated
     {
         // ---- how much ----------------------------------------------------
         // Share of the damage actually dealt. 0.15 = 15%.
@@ -145,11 +146,46 @@ namespace ModuleForge
 
         public override void OnInstalled(Unit.Data unit)
         {
+            // Recorded before anything is pushed: a ship-grid contribution
+            // reaches only the guns of the unit carrying it.
+            ModuleForgeScope.SetOwner(this, unit);
+            Engage();
+            ModuleForgeLive.Track(this, unit);
+        }
+
+        public override void OnUninstalled(Unit.Data unit)
+        {
+            ModuleForgeLive.Untrack(this);
+            Disengage();
+        }
+
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // Healing off a card the player can see is dark would be the least
+        // forgivable of the twelve.
+        //
+        // `_weapon` is dropped on the way out for the same reason as crit's: a
+        // weapon rebuilt without this module never calls `Modify` again, so the
+        // capture would outlive the `WeaponBase` it names.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            ModuleForgeScope.SetOwner(this, unit);
+
+            if (live)
+                Engage();
+            else
+                Disengage();
+        }
+
+        // The one owner of each direction, so install, uninstall and the
+        // powered gate cannot drift apart.
+        private void Engage()
+        {
             _installed = true;
             Push();
         }
 
-        public override void OnUninstalled(Unit.Data unit)
+        private void Disengage()
         {
             _installed = false;
             _weapon = null;
@@ -174,6 +210,7 @@ namespace ModuleForge
             if (!_installed)
                 return;
 
+            ModuleForgeScope.SetOwner(this, unit);
             Push();
         }
 

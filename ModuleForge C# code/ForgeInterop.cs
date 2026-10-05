@@ -344,6 +344,204 @@ namespace ModuleForge
             }
         }
 
+        // ------------------------------------------------------------------
+        // Overheat
+        // ------------------------------------------------------------------
+        //
+        // His R15 ask: *"can you add the onkill effect for moduleforge to cool
+        // for overheat feature? maybe add a check to make sure both mods are
+        // in-place before implementing it?"*
+        //
+        // The check is structural rather than a flag: the heat meter is a
+        // `ForgeHeat` MonoBehaviour that only Weapon Forge creates, so with that
+        // mod absent this resolves to nothing and a module carrying `coolHeat`
+        // simply has no meter to act on. There is no Module Forge heat system
+        // for it to fall back to and there should not be one - `overheat` is a
+        // per-weapon block from a weapon file, which is Weapon Forge's half of
+        // the split.
+        private static bool _heatInit;
+        private static MethodInfo _coolOn;   // ForgeHeat.CoolOn
+
+        public static bool HasWeaponOverheat
+        {
+            get
+            {
+                EnsureHeat();
+                return _coolOn != null;
+            }
+        }
+
+        // Returns how many heat meters were actually cooled - 0 covers both
+        // "Weapon Forge is not installed" and "this gun has no overheat block",
+        // which is what the caller wants to say out loud once.
+        public static int CoolWeaponHeat(
+            Unit unit, WeaponBase weapon, float amount)
+        {
+            EnsureHeat();
+
+            if (_coolOn == null || unit == null || amount <= 0f)
+                return 0;
+
+            try
+            {
+                object n = _coolOn.Invoke(
+                    null, new object[] { unit, weapon, amount });
+
+                return (n is int) ? (int)n : 0;
+            }
+            catch (Exception)
+            {
+                // One failure is enough; never pay for a broken bridge on
+                // every kill.
+                _coolOn = null;
+                return 0;
+            }
+        }
+
+        // Clears a FAILED lookup so the next run tries again. Called from
+        // BurnResetPatch.ResetAll.
+        //
+        // This mod loads BEFORE Weapon Forge, so "the type is not there" is a
+        // question with a different answer depending on when it is asked - and
+        // latching the first answer forever is the trap that note exists for.
+        // Module building runs from a game-side startup postfix, long after the
+        // chainloader has finished, so in practice the first answer is already
+        // right; this is what makes that a happy accident rather than a
+        // dependency.
+        public static void ResetHeatLookup()
+        {
+            if (_coolOn == null)
+                _heatInit = false;
+        }
+
+        private static void EnsureHeat()
+        {
+            // Latch only on SUCCESS. A failure costs one assembly scan per run
+            // rather than one per kill.
+            if (_heatInit || _coolOn != null)
+                return;
+
+            _heatInit = true;
+
+            try
+            {
+                Type heat = null;
+
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    try
+                    {
+                        heat = asm.GetType("WeaponForge.ForgeHeat", false);
+                    }
+                    catch (Exception)
+                    {
+                        continue;
+                    }
+
+                    if (heat != null)
+                        break;
+                }
+
+                if (heat != null)
+                    _coolOn = AccessTools.Method(heat, "CoolOn");
+            }
+            catch
+            {
+                _coolOn = null;
+            }
+        }
+
+        // ---- whose guns a ship-grid crit / leech module reaches --------------
+        //
+        // With Weapon Forge installed, a ship-grid crit or leech module feeds
+        // THAT mod's engine through a null-weapon "every weapon" channel - and
+        // until R19 that channel really meant every weapon in the game, enemy
+        // guns included. Weapon Forge now asks `ForgeModuleScope.Applies`, which
+        // needs to be told who carries the module. Called by both bridges before
+        // a null-weapon push. See ModuleForgeScope for the whole story.
+        //
+        // Latches on SUCCESS only, like the heat lookup above and for the same
+        // load-order reason. Says once if the method is missing, because then
+        // Weapon Forge is older than this mod and still sums the channel into
+        // every weapon.
+        private static readonly BepInEx.Logging.ManualLogSource Log =
+            ModuleForgeLog.Source("ModuleForge.Interop");
+
+        private static MethodInfo _setOwner;    // ForgeModuleScope.SetOwner
+        private static bool _ownerLooked;
+        private static bool _saidNoOwnerApi;
+
+        public static void TellWeaponForgeOwner(object key)
+        {
+            if (key == null)
+                return;
+
+            if (_setOwner == null && !_ownerLooked)
+            {
+                _ownerLooked = true;
+
+                try
+                {
+                    Type scope = null;
+
+                    foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        try
+                        {
+                            scope = asm.GetType("WeaponForge.ForgeModuleScope", false);
+                        }
+                        catch (Exception)
+                        {
+                            continue;
+                        }
+
+                        if (scope != null)
+                            break;
+                    }
+
+                    if (scope != null)
+                        _setOwner = AccessTools.Method(
+                            scope, "SetOwner",
+                            new[] { typeof(object), typeof(Unit.Data) });
+                }
+                catch (Exception)
+                {
+                    _setOwner = null;
+                }
+            }
+
+            if (_setOwner == null)
+            {
+                if (!_saidNoOwnerApi)
+                {
+                    _saidNoOwnerApi = true;
+                    Log.LogWarning(
+                        "Weapon Forge has no ForgeModuleScope.SetOwner, so it is " +
+                        "OLDER than Module Forge - a ship-grid crit or leech " +
+                        "module will also reach ENEMY guns through it. Update " +
+                        "both mods to matching versions.");
+                }
+
+                return;
+            }
+
+            try
+            {
+                _setOwner.Invoke(null, new object[] { key, ModuleForgeScope.OwnerOf(key) });
+            }
+            catch (Exception)
+            {
+                _setOwner = null;
+            }
+        }
+
+        // A failed owner lookup is retried next run, same as the heat one.
+        public static void ResetOwnerLookup()
+        {
+            if (_setOwner == null)
+                _ownerLooked = false;
+        }
+
         // Resolved separately from Ensure() and NOT through
         // AccessTools.TypeByName, which logs a warning when the type is absent -
         // "Weapon Forge is not installed" is a completely normal state.

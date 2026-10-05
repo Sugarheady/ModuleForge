@@ -52,7 +52,7 @@ namespace ModuleForge
     public class ModuleForgeAmmo : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Ammo");
+            ModuleForgeLog.Source("ModuleForge.Ammo");
 
         public class Spec
         {

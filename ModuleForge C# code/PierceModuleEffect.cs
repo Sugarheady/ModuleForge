@@ -14,7 +14,8 @@ namespace ModuleForge
     // any effect implementing the interface - no Harmony patch needed. (The
     // weapon's combined total is a separate line, see WeaponStatsPatch.)
     [Serializable]
-    public class PierceModuleEffect : ModuleEffect, IHasDescriptionForUnit
+    public class PierceModuleEffect
+        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeLive.IGated
     {
         // FloatSeries so the cap can scale with the module's level, and FLOAT
         // so a level can buy a FRACTION of a pierce: 1.5 pierces once always
@@ -66,6 +67,34 @@ namespace ModuleForge
 
         public override void OnInstalled(Unit.Data unit)
         {
+            Engage(unit);
+            ModuleForgeLive.Track(this, unit);
+        }
+
+        public override void OnUninstalled(Unit.Data unit)
+        {
+            ModuleForgeLive.Untrack(this);
+            Disengage(unit);
+        }
+
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // The cap is a shared accumulator, so a dead module left in it would
+        // hand the whole ship pierce it has not earned.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+                Engage(unit);
+            else
+                Disengage(unit);
+        }
+
+        // The one owner of each direction, so install, uninstall and the
+        // powered gate cannot drift apart. `_registered` makes both idempotent,
+        // and re-engaging re-reads the level, which is what makes a boosted
+        // module come back at its CURRENT value rather than its old one.
+        private void Engage(Unit.Data unit)
+        {
             if (_registered) return;
             _owner = unit;
             _applied = CurrentCap;
@@ -74,7 +103,7 @@ namespace ModuleForge
             _registered = true;
         }
 
-        public override void OnUninstalled(Unit.Data unit)
+        private void Disengage(Unit.Data unit)
         {
             if (!_registered) return;
             ModuleForgeProjectile.RemovePierce(_owner ?? unit, _applied);

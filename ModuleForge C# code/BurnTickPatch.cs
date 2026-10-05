@@ -17,7 +17,7 @@ namespace ModuleForge
     public class BurnTickPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         static void Prefix(DamagableResource __instance)
         {

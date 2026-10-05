@@ -17,7 +17,8 @@ namespace ModuleForge
     // list is rebuilt from our registry via Clone(), and the restore path
     // re-fires OnInstalled - so the boost re-registers automatically.
     [Serializable]
-    public class BurnRateModuleEffect : ModuleEffect, IHasDescriptionForWeapon
+    public class BurnRateModuleEffect
+        : ModuleEffect, IHasDescriptionForWeapon, ModuleForgeLive.IGated
     {
         // Ticks/sec this module adds per equipped copy (a FloatSeries so
         // it can optionally scale with the module's level).
@@ -41,6 +42,34 @@ namespace ModuleForge
 
         public override void OnInstalled(Unit.Data unit)
         {
+            Engage(unit);
+            ModuleForgeLive.Track(this, unit);
+        }
+
+        public override void OnUninstalled(Unit.Data unit)
+        {
+            ModuleForgeLive.Untrack(this);
+            Disengage(unit);
+        }
+
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // This one contributes to a RUNNING TOTAL, so a dead module left in it
+        // is a burn rate nobody can account for.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+                Engage(unit);
+            else
+                Disengage(unit);
+        }
+
+        // The one owner of each direction, so install, uninstall and the
+        // powered gate cannot drift apart. `_registered` makes both idempotent,
+        // and re-engaging re-reads the level so a boosted module comes back at
+        // its current value.
+        private void Engage(Unit.Data unit)
+        {
             if (_registered)
                 return;
 
@@ -50,7 +79,7 @@ namespace ModuleForge
             _registered = true;
         }
 
-        public override void OnUninstalled(Unit.Data unit)
+        private void Disengage(Unit.Data unit)
         {
             if (!_registered)
                 return;

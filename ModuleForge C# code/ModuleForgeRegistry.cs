@@ -26,6 +26,19 @@ namespace ModuleForge
         // Flat amount ADDED to the price each time it's bought (the game's
         // own escalation model - see ShopItem.IncreasePrice). 0 = fixed price.
         public float shopPriceIncrement;
+
+        // "shopCost" / "shopCostIncrement": currencies BEYOND money, kept as
+        // the authored name and amount and resolved at injection time, when
+        // the game's assets are live. See ModuleForgeShopCost.
+        public ModuleForgeShopCost.Cost[] shopCost;
+        public ModuleForgeShopCost.Cost[] shopCostIncrement;
+
+        // "shopUnlock": ingredients that must have been picked up at least
+        // once before this appears in the shop at all. Independent of the
+        // price - the stock game always pairs the two, and keeping them apart
+        // was his call so a file can gate on one thing and charge another.
+        public string[] shopUnlock;
+
         public int shopUnlockLevel;
     }
 
@@ -35,7 +48,7 @@ namespace ModuleForge
     public static class ModuleForgeRegistry
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         private static readonly List<ModuleEntry> _entries =
             new List<ModuleEntry>();

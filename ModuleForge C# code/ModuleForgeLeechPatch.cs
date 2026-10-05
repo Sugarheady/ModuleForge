@@ -19,7 +19,7 @@ namespace ModuleForge
     public static class ModuleForgeLeechPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Leech");
+            ModuleForgeLog.Source("ModuleForge.Leech");
 
         // Carried prefix -> postfix through Harmony's __state, NOT a static.
         // `Damage` NESTS: it can call `Die()`, whose spawn-on-death explosion
@@ -118,7 +118,24 @@ namespace ModuleForge
 
             Unit hurt = victim.GetComponentInParent<Unit>();
 
-            if (hurt == null || hurt == owner)
+            // ★★ AND YOU CANNOT LEECH OFF YOUR OWN SIDE EITHER. The hull test
+            // above was right and too narrow - audit one mod, audit its twin:
+            // Weapon Forge's `ForgeDamageDealt.Open` had the identical guard
+            // and the identical hole. A minion, a charmed unit or a wingman
+            // drone body is not `owner`, so damage to one was measured as
+            // damage dealt and paid for: deploy, shoot your own companions,
+            // heal - a straight resource-to-health converter with no cap.
+            //
+            // > A guard written for the exceptional path is not a guard for the
+            // > ordinary one. "Your own hull" is the exceptional self-hit;
+            // > "anything on your side" is the ordinary one.
+            //
+            // The hull test is KEPT as well as widened: self-friendship is a
+            // property of the faction asset and only the Player one was checked
+            // (`Player.asset` ships `allies: [ {fileID: 11400000} ]`, a
+            // self-reference), so an enemy faction that does not list itself
+            // must not start leeching off its own hull.
+            if (hurt == null || hurt == owner || owner.IsFriendsWith(hurt))
                 return null;
 
             // `DamagableResource.Tank` resolves through Unit.GetTank, which is

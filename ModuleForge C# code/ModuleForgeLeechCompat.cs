@@ -26,7 +26,7 @@ namespace ModuleForge
     public static class ModuleForgeLeechCompat
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Leech");
+            ModuleForgeLog.Source("ModuleForge.Leech");
 
         private static bool _init;
         private static bool _weaponForgePresent;
@@ -134,6 +134,11 @@ namespace ModuleForge
                 return;
 
             Announce(resource, options);
+
+            // A ship-grid module (null weapon) must reach only its OWN ship's
+            // guns in Weapon Forge's engine too - tell it who that is first.
+            if (weapon == null)
+                ForgeInterop.TellWeaponForgeOwner(key);
 
             try
             {

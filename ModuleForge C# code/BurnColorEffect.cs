@@ -16,7 +16,8 @@ namespace ModuleForge
     // Save/load safe: rebuilt from the registry via Clone() on continue,
     // and OnInstalled re-fires so it re-registers.
     [Serializable]
-    public class BurnColorEffect : ModuleEffect, IHasDescriptionForWeapon
+    public class BurnColorEffect
+        : ModuleEffect, IHasDescriptionForWeapon, ModuleForgeLive.IGated
     {
         public bool rgb;
         public Color color = Color.white;   // resolved solid tint
@@ -47,6 +48,30 @@ namespace ModuleForge
 
         public override void OnInstalled(Unit.Data unit)
         {
+            Engage(unit);
+            ModuleForgeLive.Track(this, unit);
+        }
+
+        public override void OnUninstalled(Unit.Data unit)
+        {
+            ModuleForgeLive.Untrack(this);
+            Disengage(unit);
+        }
+
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+                Engage(unit);
+            else
+                Disengage(unit);
+        }
+
+        // The one owner of each direction, so install, uninstall and the
+        // powered gate cannot drift apart. `_registered` makes both idempotent.
+        private void Engage(Unit.Data unit)
+        {
             if (_registered)
                 return;
 
@@ -55,7 +80,7 @@ namespace ModuleForge
             _registered = true;
         }
 
-        public override void OnUninstalled(Unit.Data unit)
+        private void Disengage(Unit.Data unit)
         {
             if (!_registered)
                 return;

@@ -289,7 +289,9 @@ EFFECTS - WEAPON (use with target ""weapon"")
 
 ICONS
 -----
-The game's own icons are ""HUD_GridTiles_NN"" sprites. Handy ones:
+The game's own icons are ""HUD_GridTiles_0"" to ""_44"" and
+""HUD_Modules_0"" to ""_35"" - NO leading zero, so it is _7 not _07.
+Handy ones:
   Up 12   Regen 17   Shield 34   Burn 40   Explosion 39   Spark 41
   Extra Projectile 10   Fire Rate 4   Spread 5   Proj Speed 15
   Range 11   Power Core 18   Burst (HUD_Modules_17)
@@ -365,7 +367,8 @@ NOTES
   MaxTicksPerSecond (default 100) in BepInEx\config\com.sugarheady.moduleforge.cfg.
   (The game ticks burn at most once per frame, so a cap above your frame
   rate just means 'every frame'.)
-- Errors are logged to BepInEx/LogOutput.log with the file name.
+- Problems are logged to BepInEx/ModuleForge.log with the file name
+  (the launch before is ModuleForge.prev.log).
 ");
         }
     }

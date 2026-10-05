@@ -33,7 +33,7 @@ namespace ModuleForge
     public static class ModuleForgeCritCompat
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Crit");
+            ModuleForgeLog.Source("ModuleForge.Crit");
 
         private static bool _init;
         private static bool _weaponForgePresent;
@@ -139,6 +139,11 @@ namespace ModuleForge
                 return;
 
             Announce(options);
+
+            // A ship-grid module (null weapon) must reach only its OWN ship's
+            // guns in Weapon Forge's engine too - tell it who that is first.
+            if (weapon == null)
+                ForgeInterop.TellWeaponForgeOwner(key);
 
             try
             {

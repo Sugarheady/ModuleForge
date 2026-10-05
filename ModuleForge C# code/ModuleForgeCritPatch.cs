@@ -16,7 +16,7 @@ namespace ModuleForge
     public static class ModuleForgeCritPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Crit");
+            ModuleForgeLog.Source("ModuleForge.Crit");
 
         // The shot currently delivering damage, so the damage prefix can reach
         // it for Roll.Shot. Set in a prefix and cleared in a FINALIZER on the

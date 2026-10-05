@@ -26,7 +26,7 @@ namespace ModuleForge
     public class ModuleForgeStealth : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Stealth");
+            ModuleForgeLog.Source("ModuleForge.Stealth");
 
         // What a module asks for. Passed by the effect rather than held on it,
         // so the controller never needs to know about ModuleEffect at all.

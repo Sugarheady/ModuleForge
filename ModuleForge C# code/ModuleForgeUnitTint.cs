@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -37,11 +37,66 @@ namespace ModuleForge
     public class ModuleForgeUnitTint : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Tint");
+            ModuleForgeLog.Source("ModuleForge.Tint");
 
         // Keys used by this mod's own features. Strings rather than an enum so a
         // new feature needs no change here.
         public const string Crit = "crit";
+
+        // A DISTINCT KEY, and that is the whole point of the layer table rather
+        // than a nicety. A ship wearing a contact-damage tint that also takes a
+        // crit flash must end up back at its real colour: two features each
+        // remembering "the colour before me" and restoring it would make the
+        // first one's tint PERMANENT for the rest of the run. Weapon Forge's
+        // copy spells this key the same way.
+        public const string Contact = "contact";
+
+        // Weapon Forge spells this key the same way, and here that is more than
+        // tidiness: when both mods are installed THAT mod owns the slow debuff
+        // and tints through its own copy of this table, so a unit can only ever
+        // carry one layer called "slow" however it got slowed.
+        public const string Slow = "slow";
+
+        // HOW A LAYER MEETS THE SPRITE UNDERNEATH IT.
+        //
+        // Kept in step with Weapon Forge's copy, and the reason is not
+        // symmetry for its own sake: **a multiply can only darken**, so a pale
+        // crit flash on a dark enemy is nearly invisible while the same flash
+        // on a pale one reads clearly - and no strength value fixes it, since
+        // at 1 a multiply is already as strong as a multiply gets. That was
+        // reported twice in one round against Weapon Forge's tints (R14 tests
+        // 166/167). This path only runs with Weapon Forge absent, which is
+        // exactly why it would have gone unnoticed here.
+        //
+        // Replace moves the sprite TOWARD the colour, brightening as readily as
+        // darkening. Multiply stays the default because every module already
+        // written was tuned against it. `tint` is accepted as a spelling of
+        // multiply, matching Weapon Forge's minion `colorMode`.
+        public const int Multiply = 0;
+        public const int Replace = 1;
+
+        // -1 for a word this does not know, so the caller warns rather than
+        // silently handing back the default.
+        public static int ParseMode(string s)
+        {
+            switch ((s ?? "").Trim().ToLowerInvariant())
+            {
+                case "replace":
+                case "blend":
+                case "over":
+                case "solid":
+                case "strong":
+                    return Replace;
+
+                case "multiply":
+                case "tint":
+                case "shade":
+                    return Multiply;
+
+                default:
+                    return -1;
+            }
+        }
 
         private class Layer
         {
@@ -58,6 +113,8 @@ namespace ModuleForge
             // tint" toward the colour; the pulse was just the only thing
             // allowed to drive that lerp. 1 is exactly the old look.
             public float strength = 1f;
+
+            public int mode = Multiply;
         }
 
         private readonly List<Layer> _layers = new List<Layer>();
@@ -88,6 +145,13 @@ namespace ModuleForge
             Unit unit, string key, Color color, float seconds, float pulseHz,
             float strength)
         {
+            Set(unit, key, color, seconds, pulseHz, strength, Multiply);
+        }
+
+        public static void Set(
+            Unit unit, string key, Color color, float seconds, float pulseHz,
+            float strength, int mode)
+        {
             if (unit == null || string.IsNullOrEmpty(key))
                 return;
 
@@ -113,6 +177,7 @@ namespace ModuleForge
                 layer.pulseHz = Mathf.Max(0f, pulseHz);
                 layer.endsAt = (seconds > 0f) ? Time.time + seconds : 0f;
                 layer.strength = Mathf.Clamp01(strength);
+                layer.mode = mode;
 
                 t.Write();
             }
@@ -251,6 +316,41 @@ namespace ModuleForge
         {
             Color product = Product();
 
+            // The replace layers, gathered once - they do not depend on the
+            // base colour. A WEIGHTED MIX rather than a chain of lerps: at
+            // strength 1 a lerp discards everything before it, so whichever
+            // layer came last in the list would win outright, and list order
+            // is publication order. Weights commute. (Weapon Forge's muzzle
+            // table shipped the lerp-chain version and it produced a gun that
+            // stopped showing heat exactly when the heat mattered.)
+            float over = 0f;
+            float or_ = 0f, og = 0f, ob = 0f;
+
+            for (int i = 0; i < _layers.Count; i++)
+            {
+                Layer l = _layers[i];
+
+                if (l.mode != Replace)
+                    continue;
+
+                float s = Live(l);
+
+                if (s <= 0.001f)
+                    continue;
+
+                over += s;
+                or_ += l.color.r * s;
+                og += l.color.g * s;
+                ob += l.color.b * s;
+            }
+
+            if (over > 1f)
+            {
+                or_ /= over;
+                og /= over;
+                ob /= over;
+            }
+
             for (int i = 0; i < _renderers.Count; i++)
             {
                 SpriteRenderer sr = _renderers[i];
@@ -260,19 +360,31 @@ namespace ModuleForge
 
                 Color b = _base[i];
 
+                // Multiply first, then replace over the result - the only
+                // ordering that means anything, since a replace layer is
+                // "paint this on top".
+                float r = b.r * product.r;
+                float g = b.g * product.g;
+                float bl = b.b * product.b;
+
+                if (over > 0.001f)
+                {
+                    float keep = (over > 1f) ? 0f : 1f - over;
+
+                    r = r * keep + or_;
+                    g = g * keep + og;
+                    bl = bl * keep + ob;
+                }
+
                 // The renderer's CURRENT alpha, not the captured one - so
                 // anything driving alpha at the same time is preserved rather
                 // than reverted every frame.
-                sr.color = new Color(
-                    b.r * product.r,
-                    b.g * product.g,
-                    b.b * product.b,
-                    sr.color.a);
+                sr.color = new Color(r, g, bl, sr.color.a);
             }
         }
 
-        // Every live layer multiplied together. Commutative, so no ordering and
-        // no priorities - two features cannot fight over who wins.
+        // Every live MULTIPLY layer multiplied together. Commutative, so no
+        // ordering and no priorities - two features cannot fight over who wins.
         private Color Product()
         {
             float r = 1f, g = 1f, b = 1f;
@@ -281,18 +393,10 @@ namespace ModuleForge
             {
                 Layer l = _layers[i];
 
-                float strength = l.strength;
+                if (l.mode != Multiply)
+                    continue;
 
-                if (l.pulseHz > 0f)
-                {
-                    // 0..1, so the pulse runs between "no tint at all" and the
-                    // full colour rather than between two tints.
-                    // Multiplies rather than replaces: a half-strength
-                    // pulsing tint should still pulse, between nothing and
-                    // half. Setting one must never switch the other off.
-                    strength *= 0.5f + 0.5f *
-                        Mathf.Sin(Time.time * l.pulseHz * Mathf.PI * 2f);
-                }
+                float strength = Live(l);
 
                 r *= Mathf.Lerp(1f, l.color.r, strength);
                 g *= Mathf.Lerp(1f, l.color.g, strength);
@@ -374,5 +478,25 @@ namespace ModuleForge
 
             return false;
         }
-    }
+    
+        // This layer's strength right now, pulse included. Shared by both
+        // operators so a throb behaves identically in either mode.
+        private static float Live(Layer l)
+        {
+            float strength = l.strength;
+
+            if (l.pulseHz > 0f)
+            {
+                // 0..1, so the pulse runs between "no tint at all" and the
+                // full colour rather than between two tints. Multiplies
+                // rather than replaces: a half-strength pulsing tint should
+                // still pulse, between nothing and half. Setting one must
+                // never switch the other off.
+                strength *= 0.5f + 0.5f *
+                    Mathf.Sin(Time.time * l.pulseHz * Mathf.PI * 2f);
+            }
+
+            return Mathf.Clamp01(strength);
+        }
+}
 }

@@ -27,7 +27,7 @@ namespace ModuleForge
     public class ModuleForgeInvuln : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Invuln");
+            ModuleForgeLog.Source("ModuleForge.Invuln");
 
         // Longest window any installed module asks for. Modules do not stack
         // duration - two 1-second modules give one second, not two - because a

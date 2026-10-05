@@ -21,7 +21,7 @@ namespace ModuleForge
     public class ModuleLootPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         // Groups we've already augmented, so we add our modules once.
         private static readonly HashSet<DropTableWeightedGroup> _done =

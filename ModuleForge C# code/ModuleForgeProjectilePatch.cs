@@ -17,7 +17,7 @@ namespace ModuleForge
     public static class ModuleForgeProjectilePatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         [HarmonyPatch(typeof(Projectile), "Shoot")]
         public class OnShoot

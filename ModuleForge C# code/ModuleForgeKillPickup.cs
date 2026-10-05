@@ -102,7 +102,7 @@ namespace ModuleForge
     public static class ModuleForgeKillPickup
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.KillPickup");
+            ModuleForgeLog.Source("ModuleForge.KillPickup");
 
         // The fallback art for a resource with no pickup of its own, in
         // preference order. All three of these are the SAME orb sprite with a

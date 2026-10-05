@@ -19,7 +19,7 @@ namespace ModuleForge
     public class BurnColorPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         private static AccessTools.FieldRef<
             StatusEffectParticleManager, ParticleSystem[]> _psRef;

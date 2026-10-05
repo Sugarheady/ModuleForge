@@ -17,7 +17,103 @@ namespace ModuleForge
     {
         private void Awake()
         {
-            Logger.LogInfo("Module Forge loaded");
+            // ---- THE LOG FILE, before the first line ----------------------
+            //
+            // Everything this mod logs goes to BepInEx\ModuleForge.log, and
+            // LogOutput.log keeps only this plugin's own lines plus a copy of
+            // every error - see ModuleForgeLog. First, so "loaded" and BUILD
+            // are in the file too: it has to stand on its own when it is the
+            // only file somebody sends.
+            ConfigEntry<bool> ownLogFile = Config.Bind(
+                "Logging",
+                "OwnLogFile",
+                true,
+                "true: Module Forge writes its log to BepInEx\\ModuleForge.log " +
+                "(the launch before is kept as ModuleForge.prev.log), so " +
+                "LogOutput.log and the console stay readable for BepInEx and " +
+                "other mods. Only errors are copied to LogOutput.log.\n" +
+                "false: everything goes to LogOutput.log and the console, the " +
+                "way it did before 2026-09-25.");
+
+            ModuleForgeLog.Start(Logger, ownLogFile.Value);
+
+            Logger.LogInfo("Module Forge loaded" + ModuleForgeLog.Where);
+
+            // Build stamp. A deliberate copy of Weapon Forge's, and the
+            // duplicate-by-design rule is why it is a copy rather than a
+            // borrow: a stamp is not a decoder, and this mod has to be able
+            // to answer for itself with the other one absent.
+            //
+            // It was missing here for the whole of R18 while Weapon Forge had
+            // it, which is the worse half of not having it at all: the log
+            // carried one authoritative BUILD line, so a reader checking
+            // "am I testing the DLL I just built" got a confident answer
+            // about the OTHER mod. R18 test 233 was a Module Forge test.
+            //
+            // The timestamp is the DLL's own last-write time, so it changes
+            // on every rebuild whether or not anyone remembers to bump a
+            // number.
+            try
+            {
+                string dll = System.Reflection.Assembly
+                    .GetExecutingAssembly().Location;
+
+                Logger.LogInfo(
+                    "BUILD " +
+                    System.IO.File.GetLastWriteTime(dll)
+                        .ToString("yyyy-MM-dd HH:mm:ss") +
+                    "  (if this is older than the change you are testing, " +
+                    "the DLL did not get copied)");
+            }
+            catch { }
+
+            // ---- THE OFF SWITCH -------------------------------------------
+            //
+            // A deliberate copy of Weapon Forge's, per the duplicate-by-design
+            // rule: an off switch is not a decoder, and each mod must be able
+            // to switch itself off with the others absent. Game Mode Forge's
+            // settings tab only EDITS this file - it never reaches in here.
+            //
+            // ★ IT HAS TO BE HERE, ABOVE EVERYTHING. A .NET assembly cannot be
+            // unloaded in Unity's Mono (one AppDomain, no collectible load
+            // contexts on .NET Framework 4.7.2), so "turn the mod off" can
+            // only mean "this launch, do nothing at all". Returning here means
+            // no patches, no registrations, and - because module building runs
+            // from a Harmony startup patch that now never applies - no Forge
+            // modules in any registry either.
+            //
+            // ⚠ A PARTIAL VERSION WOULD BE WORSE THAN NONE. Leave the content
+            // built and remove the patches and you get modules that exist and
+            // do nothing. Rip the content back out of the registries
+            // mid-session and you break saves instead:
+            // `Vault.RestoreFromMemento` does `registry.Get(id).DeepCopy()`
+            // with no null check, and `ConfigRegistry.Get` returns default(T)
+            // on a miss - so loading a save holding a Forge module would throw
+            // inside the game's own code. Off means off from the first line.
+            ConfigEntry<bool> enabled = Config.Bind(
+                "General",
+                "Enabled",
+                true,
+                "Master switch for this whole mod. Off means Module Forge " +
+                "patches nothing and builds nothing for that launch - the " +
+                "game runs as if the DLL were not installed. Takes effect on " +
+                "the NEXT launch, because a loaded assembly cannot be " +
+                "unloaded. Game Mode Forge's settings tab writes this for " +
+                "you; editing it here by hand works just as well.\n" +
+                "⚠ A saved run that used Forge modules will NOT load while " +
+                "this is off. Turn it back on to recover the save.");
+
+            if (!enabled.Value)
+            {
+                Logger.LogWarning(
+                    "MODULE FORGE IS SWITCHED OFF ([General] Enabled = false " +
+                    "in this mod's BepInEx config). No patches, no modules, " +
+                    "nothing built - the game runs stock. A save that used " +
+                    "Forge content will not load until this is switched back " +
+                    "on.");
+
+                return;
+            }
 
             // The burn-tick-rate cap: burn-rate modules can never make a
             // burn tick faster than this many times per second, no matter
@@ -122,7 +218,22 @@ namespace ModuleForge
             // here is slow rather than broken.
             ModuleForgeUnits.Patch(harmony);
 
+            // The windup gadget detector. Subscribed here rather than from a
+            // component because it answers a question about the SESSION ("did a
+            // weapon fire without a Shooter holding it") and needs no state of
+            // its own - a static handler on a static event, added once in
+            // Awake, so there is nothing to leak and nothing to unsubscribe.
+            ModuleForgeKills.ShotFired += ModuleForgeWindupPatch.OnShotFired;
+
             Logger.LogInfo("Module Forge patches applied");
+        }
+
+        // Let go of ModuleForge.log as this game closes. Game Mode Forge's
+        // restart row starts the next game first, and that one opens the
+        // same file.
+        private void OnApplicationQuit()
+        {
+            ModuleForgeLog.Close();
         }
 
         // The two mods keep separate indicator settings on purpose - either has
@@ -134,7 +245,7 @@ namespace ModuleForge
         // one-way bridge rule the rest of the interop follows. If Weapon Forge
         // is absent there is nothing to disagree with and this does nothing.
         private static readonly ManualLogSource MismatchLog =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         private static string _myStyle = "";
         private static string _myLabel = "";

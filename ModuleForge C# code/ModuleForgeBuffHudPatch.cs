@@ -18,7 +18,7 @@ namespace ModuleForge
     public static class ModuleForgeBuffHudPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.BuffHud");
+            ModuleForgeLog.Source("ModuleForge.BuffHud");
 
         [HarmonyPatch(typeof(ShipHud), "AssignShip")]
         public class OnAssignShip

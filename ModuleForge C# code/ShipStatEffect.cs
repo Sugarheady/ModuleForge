@@ -21,7 +21,8 @@ namespace ModuleForge
     // from its template - so a direct write would compound on every stat
     // recalculation and would never come back when the module was removed.
     [Serializable]
-    public class ShipStatEffect : ModuleEffect, IHasDescriptionForUnit
+    public class ShipStatEffect
+        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeLive.IGated
     {
         public string targetProperty = ModuleForgeShipStats.MaxSpeed;
 
@@ -60,12 +61,37 @@ namespace ModuleForge
             base.OnInstalled(unit);
             _owner = unit;
             Push(unit);
+            ModuleForgeLive.Track(this, unit);
         }
 
         public override void OnUninstalled(Unit.Data unit)
         {
             base.OnUninstalled(unit);
+            ModuleForgeLive.Untrack(this);
+            Release(unit);
+        }
 
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // This is the one a player would notice first: a speed or dash stat off
+        // a card sitting dark in the corner of the grid.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+            {
+                _owner = unit;
+                Push(unit);
+            }
+            else
+            {
+                Release(unit);
+            }
+        }
+
+        // The one owner of the teardown, so uninstall and the powered gate
+        // cannot drift apart.
+        private void Release(Unit.Data unit)
+        {
             // Withdraw rather than "subtract what we added": the accumulator
             // recomputes from the captured base, so removal restores the exact
             // factory value even when several modules touched the same stat.

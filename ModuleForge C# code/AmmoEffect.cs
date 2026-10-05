@@ -17,7 +17,8 @@ namespace ModuleForge
     // down. This never touches it.
     [Serializable]
     public class AmmoEffect
-        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeKills.IKillListener
+        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeKills.IKillListener,
+          ModuleForgeLive.IGated
     {
         public const string Kill = "kill";
         public const string Always = "always";
@@ -80,12 +81,37 @@ namespace ModuleForge
             base.OnInstalled(unit);
             _owner = unit;
             Push(unit);
+            ModuleForgeLive.Track(this, unit);
         }
 
         public override void OnUninstalled(Unit.Data unit)
         {
             base.OnUninstalled(unit);
+            ModuleForgeLive.Untrack(this);
+            Release(unit);
+        }
 
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // The kill-feed registration is the half that mattered: it is a global
+        // list, so an unpowered module was still being asked about every kill.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+            {
+                _owner = unit;
+                Push(unit);
+            }
+            else
+            {
+                Release(unit);
+            }
+        }
+
+        // The one owner of the teardown, so uninstall and the powered gate
+        // cannot drift apart. Idempotent: every step is already guarded.
+        private void Release(Unit.Data unit)
+        {
             var a = ModuleForgeAmmo.For(unit ?? _owner);
 
             if (a != null)

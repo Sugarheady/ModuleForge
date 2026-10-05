@@ -13,7 +13,8 @@ namespace ModuleForge
     // sound the same.
     [Serializable]
     public class LastStandEffect
-        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeKills.IKillListener
+        : ModuleEffect, IHasDescriptionForUnit, ModuleForgeKills.IKillListener,
+          ModuleForgeLive.IGated
     {
         public bool onThreshold = true;
         public float threshold = 0.25f;
@@ -53,12 +54,37 @@ namespace ModuleForge
             base.OnInstalled(unit);
             _owner = unit;
             Push(unit);
+            ModuleForgeLive.Track(this, unit);
         }
 
         public override void OnUninstalled(Unit.Data unit)
         {
             base.OnUninstalled(unit);
+            ModuleForgeLive.Untrack(this);
+            Release(unit);
+        }
 
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        // This one is worth getting right on its own: a last stand that fires
+        // off a card the player can see is unpowered reads as the mod cheating.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            if (live)
+            {
+                _owner = unit;
+                Push(unit);
+            }
+            else
+            {
+                Release(unit);
+            }
+        }
+
+        // The one owner of the teardown, so uninstall and the powered gate
+        // cannot drift apart. Idempotent: every step is already guarded.
+        private void Release(Unit.Data unit)
+        {
             var s = ModuleForgeLastStand.For(unit ?? _owner);
 
             if (s != null)

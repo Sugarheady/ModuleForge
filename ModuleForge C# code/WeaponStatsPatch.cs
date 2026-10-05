@@ -21,7 +21,7 @@ namespace ModuleForge
     public class WeaponStatsPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         static void Postfix(WeaponBase __instance, List<DisplayableProperty> results)
         {

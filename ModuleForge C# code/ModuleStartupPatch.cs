@@ -13,7 +13,7 @@ namespace ModuleForge
     public class ModuleStartupPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         static void Postfix()
         {

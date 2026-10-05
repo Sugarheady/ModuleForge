@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using BepInEx.Logging;
 using HarmonyLib;
+using MyBox;          // MinMaxFloat, which is what WeaponBase.Burn is
 using UnityEngine;
 
 namespace ModuleForge
@@ -42,12 +43,51 @@ namespace ModuleForge
     public static class ModuleForgeWeaponStats
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Stats");
+            ModuleForgeLog.Source("ModuleForge.Stats");
 
+        // THE SAME EIGHTEEN WEAPON FORGE CARRIES, AND IN THE SAME ORDER - but
+        // the order is a convenience, not a contract. Every id that crosses the
+        // bridge is resolved from that mod BY NAME (see TryId), because two
+        // tables agreeing today is not the same as them being defined to agree.
+        //
+        // Widened from two on 2026-09-18 for `windup`. Until then this table
+        // held FireRate and Damage because the kill buff was its only customer;
+        // a ramp that pays seventeen different rewards needs the rest, and the
+        // alternative - letting the effect write those fields directly - is the
+        // exact thing this class exists to prevent.
         public const int FireRate = 0;
         public const int Damage = 1;
+        public const int AngleVariance = 2;
+        public const int Spread = 3;
+        public const int Pellets = 4;
+        public const int Cost = 5;
+        public const int Range = 6;
+        public const int Speed = 7;
+        public const int BurstSize = 8;
+        public const int BurstDelay = 9;
+        public const int Burn = 10;
+        public const int Push = 11;
+        public const int Knockback = 12;
+        public const int Size = 13;
+        public const int ExplosionRadius = 14;
+        public const int ExplosionDamage = 15;
+        public const int Warmup = 16;
+        public const int Lifetime = 17;
 
-        private const int Count = 2;
+        private const int Count = 18;
+
+        private static readonly string[] Names =
+        {
+            "fire rate", "damage", "angle variance", "spread", "pellets",
+            "cost", "range", "projectile speed", "burst size", "burst delay",
+            "burn", "push force", "knockback", "projectile size",
+            "explosion radius", "explosion damage", "warmup", "lifetime",
+        };
+
+        public static string NameOf(int stat)
+        {
+            return (stat >= 0 && stat < Count) ? Names[stat] : "?";
+        }
 
         // ------------------------------------------------------------------
         // The bridge
@@ -100,13 +140,43 @@ namespace ModuleForge
 
                 _reset = AccessTools.Method(t, "Reset", new Type[0]);
 
-                bool ids =
+                // ★ THE TWO CORE IDS GATE THE BRIDGE; THE OTHER SIXTEEN DO NOT,
+                // and that asymmetry is deliberate rather than laziness.
+                //
+                // If a missing id took the whole bridge down, an older Weapon
+                // Forge would push this mod onto its LOCAL table - and then
+                // BOTH mods would be writing `WeaponBase.FireRate` from two
+                // separately captured bases, which is the ratchet this class was
+                // written to kill. Losing the bridge is strictly worse than
+                // losing a stat.
+                //
+                // So a stat whose id cannot be resolved is simply NOT PUBLISHED
+                // (see Set), with its name said once. Refusing is safe; writing
+                // it into our own table while that mod owns the field is not.
+                bool core =
                     TryId(t, "FireRate", FireRate) &&
                     TryId(t, "Damage", Damage);
 
+                TryId(t, "AngleVariance", AngleVariance);
+                TryId(t, "Spread", Spread);
+                TryId(t, "Pellets", Pellets);
+                TryId(t, "Cost", Cost);
+                TryId(t, "Range", Range);
+                TryId(t, "Speed", Speed);
+                TryId(t, "BurstSize", BurstSize);
+                TryId(t, "BurstDelay", BurstDelay);
+                TryId(t, "Burn", Burn);
+                TryId(t, "Push", Push);
+                TryId(t, "Knockback", Knockback);
+                TryId(t, "Size", Size);
+                TryId(t, "ExplosionRadius", ExplosionRadius);
+                TryId(t, "ExplosionDamage", ExplosionDamage);
+                TryId(t, "Warmup", Warmup);
+                TryId(t, "Lifetime", Lifetime);
+
                 _bridgeReady =
                     _set != null && _clearOne != null && _clearAll != null &&
-                    ids;
+                    core;
 
                 if (!_bridgeReady)
                 {
@@ -126,8 +196,13 @@ namespace ModuleForge
             }
         }
 
+        // -1 means "that mod has no such stat", which `Set` treats as a refusal
+        // rather than as id 0 - the difference between publishing nothing and
+        // routing, say, the explosion radius into the FIRE RATE.
         private static bool TryId(Type t, string name, int mine)
         {
+            _theirIds[mine] = -1;
+
             FieldInfo f = AccessTools.Field(t, name);
 
             if (f == null || f.FieldType != typeof(int))
@@ -135,6 +210,25 @@ namespace ModuleForge
 
             _theirIds[mine] = (int)f.GetValue(null);
             return true;
+        }
+
+        // Said once per stat, because a reward that silently does nothing is
+        // indistinguishable from a reward the author mis-typed.
+        private static readonly HashSet<int> _saidUnbridged = new HashSet<int>();
+
+        private static void SayUnbridged(int stat)
+        {
+            if (!_saidUnbridged.Add(stat))
+                return;
+
+            Log.LogWarning(
+                "Weapon Forge is installed and owns a weapon's live tuning, " +
+                "but its stat table has no \"" + NameOf(stat) + "\" - so a " +
+                "module asking for that reward does nothing while that mod is " +
+                "present. Everything else still works. This means the two mods " +
+                "are different versions; update them together. (Writing it " +
+                "here instead would mean two mods each remembering the same " +
+                "field's original value, which is worse than losing it.)");
         }
 
         private static bool Bridged
@@ -178,6 +272,14 @@ namespace ModuleForge
             {
                 Announce();
 
+                // Their table cannot name this stat - refuse rather than fall
+                // through to ours. See the note on TryId.
+                if (_theirIds[stat] < 0)
+                {
+                    SayUnbridged(stat);
+                    return;
+                }
+
                 try
                 {
                     _set.Invoke(
@@ -208,6 +310,9 @@ namespace ModuleForge
 
             if (Bridged)
             {
+                if (_theirIds[stat] < 0)
+                    return;
+
                 try
                 {
                     _clearOne.Invoke(
@@ -276,6 +381,20 @@ namespace ModuleForge
         {
             public bool captured;
             public float baseValue;
+
+            // Two stats are not one number. `Burn` is a MinMaxFloat and both
+            // ends scale together; `ExplosionDamage` is a LIST, one entry per
+            // damage type. Captured alongside the scalar rather than in a
+            // parallel structure, so a stat can never be half-captured.
+            public float baseValue2;
+            public float[] baseList;
+
+            // The last product written, so a ramp publishing the same number
+            // sixty times a second writes once. Cheap for the plain floats and
+            // load-bearing for the explosion pair, which rebuilds a struct and
+            // a list every time it really writes.
+            public float lastProduct = float.NaN;
+
             public readonly List<string> keys = new List<string>();
             public readonly List<float> mults = new List<float>();
 
@@ -336,6 +455,8 @@ namespace ModuleForge
                 {
                     s.captured = true;
                     s.baseValue = Read(weapon, stat);
+                    s.baseValue2 = Read2(weapon, stat);
+                    s.baseList = ReadList(weapon, stat);
                 }
 
                 int at = s.keys.IndexOf(key);
@@ -350,7 +471,7 @@ namespace ModuleForge
                     s.mults[at] = multiplier;
                 }
 
-                Write(weapon, stat, s.baseValue * s.Product());
+                Write(weapon, stat, s, s.Product());
             }
             catch (Exception e)
             {
@@ -382,12 +503,14 @@ namespace ModuleForge
 
                 if (s.keys.Count > 0)
                 {
-                    Write(weapon, stat, s.baseValue * s.Product());
+                    Write(weapon, stat, s, s.Product());
                 }
                 else if (s.captured)
                 {
-                    Write(weapon, stat, s.baseValue);
+                    Write(weapon, stat, s, 1f);
                     s.captured = false;
+                    s.baseList = null;
+                    s.lastProduct = float.NaN;
                 }
 
                 if (e.Idle())
@@ -401,16 +524,107 @@ namespace ModuleForge
 
         private static float Read(WeaponBase w, int stat)
         {
+            var pw = w as ProjectileWeapon;
+
             switch (stat)
             {
                 case FireRate: return w.FireRate;
                 case Damage: return w.Damage.amount;
+                case AngleVariance: return w.AngleVariance;
+                case Spread: return w.Spread;
+                case Pellets: return w.ProjectileCount;
+                case Cost: return w.Cost;
+
+                case Range:
+                {
+                    var r = w as IHasRangeProperty;
+                    return (r != null) ? r.Range : 0f;
+                }
+
+                case Speed:
+                {
+                    var s = w as IHasSpeedProperty;
+                    return (s != null) ? s.Speed : 0f;
+                }
+
+                case BurstSize: return w.BurstSize;
+                case BurstDelay: return w.BurstDelay;
+
+                // The MAX end. The Min comes back from Read2.
+                case Burn: return w.Burn.Max;
+
+                case Push: return w.PushForce;
+                case Knockback: return w.KnockbackForce;
+
+                case Size:
+                {
+                    if (pw != null)
+                        return pw.ProjectileRadius;
+
+                    var hw = w as HitscanWeapon;
+                    return (hw != null) ? hw.RayWidth : 0f;
+                }
+
+                case ExplosionRadius: return w.Explosion.radius;
+
+                // Not a single number - the LIST is the base. This is here only
+                // so the idle check has something to report.
+                case ExplosionDamage:
+                {
+                    var d = w.Explosion.damages;
+                    return (d != null && d.Count > 0) ? d[0].amount : 0f;
+                }
+
+                case Warmup: return w.WarmupTime;
+
+                case Lifetime:
+                    return (pw != null) ? pw.LifetimeData.time : 0f;
+
                 default: return 0f;
             }
         }
 
-        private static void Write(WeaponBase w, int stat, float value)
+        private static float Read2(WeaponBase w, int stat)
         {
+            switch (stat)
+            {
+                case Burn: return w.Burn.Min;
+                default: return 0f;
+            }
+        }
+
+        private static float[] ReadList(WeaponBase w, int stat)
+        {
+            if (stat != ExplosionDamage)
+                return null;
+
+            List<Damage> d = w.Explosion.damages;
+
+            if (d == null || d.Count == 0)
+                return null;
+
+            var baseline = new float[d.Count];
+
+            for (int i = 0; i < d.Count; i++)
+                baseline[i] = d[i].amount;
+
+            return baseline;
+        }
+
+        private static void Write(WeaponBase w, int stat, Stat s, float k)
+        {
+            // Nothing has moved since the last write.
+            if (!float.IsNaN(s.lastProduct) &&
+                Mathf.Abs(k - s.lastProduct) < 0.000001f)
+            {
+                return;
+            }
+
+            s.lastProduct = k;
+
+            float value = s.baseValue * k;
+            var pw = w as ProjectileWeapon;
+
             switch (stat)
             {
                 case FireRate:
@@ -421,11 +635,150 @@ namespace ModuleForge
                     break;
 
                 case Damage:
+                {
                     // `Damage` is a STRUCT, so read-modify-assign.
                     Damage d = w.Damage;
                     d.amount = Mathf.Max(0f, value);
                     w.Damage = d;
                     break;
+                }
+
+                case AngleVariance:
+                    // `GetDirections` calls `Random.Range(-v, v)`, which is
+                    // happy with 0 and nonsense with a negative.
+                    w.AngleVariance = Mathf.Max(0f, value);
+                    break;
+
+                case Spread:
+                    w.Spread = Mathf.Clamp(value, 0f, 360f);
+                    break;
+
+                case Pellets:
+                    // ROUNDED, because the fan geometry is built from it:
+                    // `step = Spread / (ProjectileCount - 1)`, so a count of 2.5
+                    // spaces the pellets as though there were 1.5 gaps.
+                    //
+                    // A WEAPON AT projectileCount 0 FIRES NOTHING BY DESIGN and
+                    // must stay that way.
+                    if (s.baseValue > 0f)
+                        w.ProjectileCount = Mathf.Max(1f, Mathf.Round(value));
+                    break;
+
+                case Cost:
+                    w.Cost = Mathf.Max(0f, value);
+                    break;
+
+                case Range:
+                {
+                    var r = w as IHasRangeProperty;
+
+                    if (r != null)
+                        r.Range = Mathf.Max(0f, value);
+
+                    break;
+                }
+
+                case Speed:
+                {
+                    var sp = w as IHasSpeedProperty;
+
+                    if (sp != null)
+                        sp.Speed = Mathf.Max(0f, value);
+
+                    break;
+                }
+
+                case BurstSize:
+                    // An int, and a burst of 0 is a weapon that fires nothing:
+                    // `WeaponBase.Fire` is `for (b = 0; b < BurstSize; b++)`.
+                    w.BurstSize = Mathf.Max(1, Mathf.RoundToInt(value));
+                    break;
+
+                case BurstDelay:
+                    w.BurstDelay = Mathf.Max(0f, value);
+                    break;
+
+                case Burn:
+                    // Both ends by the same product.
+                    w.Burn = new MinMaxFloat(
+                        Mathf.Max(0f, s.baseValue2 * k), Mathf.Max(0f, value));
+                    break;
+
+                case Push:
+                    w.PushForce = value;
+                    break;
+
+                case Knockback:
+                    w.KnockbackForce = value;
+                    break;
+
+                case Size:
+                {
+                    if (pw != null)
+                    {
+                        pw.ProjectileRadius = Mathf.Max(0.001f, value);
+                        break;
+                    }
+
+                    var hw = w as HitscanWeapon;
+
+                    if (hw != null)
+                        hw.RayWidth = Mathf.Max(0.001f, value);
+
+                    break;
+                }
+
+                case ExplosionRadius:
+                {
+                    Explosion ex = w.Explosion;
+                    ex.radius = Mathf.Max(0f, value);
+                    w.Explosion = ex;
+                    break;
+                }
+
+                case ExplosionDamage:
+                {
+                    if (s.baseList == null)
+                        break;
+
+                    // DUPLICATE, do not edit in place. The weapon owns its own
+                    // list, so editing it would not reach the asset - but
+                    // `FireSingle` hands the struct to the projectile and the
+                    // struct carries the list BY REFERENCE, so editing in place
+                    // would re-scale an explosion already in the air.
+                    Explosion ex = w.Explosion.Duplicate();
+
+                    if (ex.damages != null &&
+                        ex.damages.Count == s.baseList.Length)
+                    {
+                        for (int i = 0; i < ex.damages.Count; i++)
+                        {
+                            ex.damages[i] = new Damage(
+                                Mathf.Max(0f, s.baseList[i] * k),
+                                ex.damages[i].damageType);
+                        }
+                    }
+
+                    w.Explosion = ex;
+                    break;
+                }
+
+                case Warmup:
+                    // 0 is legitimate and useful: it removes the game's own
+                    // minigun gate for the length of a ramp.
+                    w.WarmupTime = Mathf.Max(0f, value);
+                    break;
+
+                case Lifetime:
+                {
+                    if (pw == null)
+                        break;
+
+                    ProjectileLifetimeData lt = pw.LifetimeData;
+                    lt.time = Mathf.Max(0.01f, value);
+                    pw.LifetimeData = lt;
+                    break;
+                }
             }
         }
     }

@@ -22,7 +22,7 @@ namespace ModuleForge
     public class ModuleForgeLeechOrb : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Leech");
+            ModuleForgeLog.Source("ModuleForge.Leech");
 
         [NonSerialized] private Transform _target;
         [NonSerialized] private Unit _player;

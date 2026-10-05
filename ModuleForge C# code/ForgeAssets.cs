@@ -11,7 +11,7 @@ namespace ModuleForge
     public static class ForgeAssets
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         // Friendly resource name -> actual asset name. The game uses a
         // couple of internal aliases (Stamina == White, Gel == Purple).
@@ -47,6 +47,71 @@ namespace ModuleForge
             }
 
             return null;
+        }
+
+        // A PARTICLE SYSTEM PREFAB, by name - and the filter is the point.
+        //
+        // `FindAsset` above is fine for a ScriptableObject, because those have
+        // no scene instances. A `ParticleSystem` has plenty:
+        // `Resources.FindObjectsOfTypeAll` returns every one currently alive in
+        // the world alongside the prefabs, and the muzzle flash that happens to
+        // be playing right now matches "MuzzleParticle Laser" just as well as
+        // the prefab does.
+        //
+        // Handing a LIVE one to `WeaponBase.MuzzleParticlePrefab` would have
+        // `InitializeVisuals` instantiate copies of an object that is mid-play
+        // and about to be destroyed - and a destroyed Unity object compares
+        // equal to null, so the flash would simply stop working partway through
+        // a run with nothing in the log. That is the same shape as the
+        // ResourcePickup cache bug in CLAUDE.md: *a live instance is whichever
+        // one happened to be lying around.*
+        //
+        // A prefab's GameObject belongs to no scene, which is the test. Live
+        // instances are still accepted as a LAST resort, because a prefab this
+        // scan cannot see is worse than a warning - but it says so.
+        public static ParticleSystem ResolveParticlePrefab(
+            string name, string fileName)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            name = name.Trim();
+
+            ParticleSystem live = null;
+
+            foreach (var asset in
+                Resources.FindObjectsOfTypeAll(typeof(ParticleSystem)))
+            {
+                var ps = asset as ParticleSystem;
+
+                if (ps == null || ps.gameObject == null)
+                    continue;
+
+                if (!string.Equals(ps.name, name,
+                                   StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!ps.gameObject.scene.IsValid())
+                    return ps;
+
+                if (live == null)
+                    live = ps;
+            }
+
+            if (live != null)
+            {
+                Log.LogWarning(
+                    fileName + ": '" + name + "' matched a particle system " +
+                    "that is ALIVE IN THE WORLD rather than a prefab. It is " +
+                    "being used, but it belongs to something on screen - if " +
+                    "that object is destroyed the effect stops working with " +
+                    "nothing in the log. Prefer a prefab name such as " +
+                    "\"MuzzleParticle Laser\".");
+            }
+
+            return live;
         }
 
         // A sprite, or a NUMBERED RUN of them as one flipbook.
@@ -341,8 +406,10 @@ namespace ModuleForge
         //
         // `:frames` is the ONLY way to choose which frame of a numbered run an
         // icon shows, and without this the whole string reached `FindAsset`, so
-        // "HUD_GridTiles_04:2" matched no asset and fell through to the "not a
+        // "HUD_GridTiles_4:2" matched no asset and fell through to the "not a
         // sprite in the game" warning with the suffix as the unstated reason.
+        // (That example used to read "_04:2" - doubly unresolvable, since the
+        // padding is wrong too. See `PaddedRetry`.)
         //
         // The exact name is tried FIRST, so nothing already written changes and
         // an unsuffixed icon never pays for a run scan. `@fps` is dropped
@@ -358,16 +425,98 @@ namespace ModuleForge
             int at = name.LastIndexOf('@');
             string key = (at >= 0) ? name.Substring(0, at).Trim() : name;
 
+            // ★ THE PADDED RETRY HAS TO BE REACHABLE FROM HERE. This branch
+            // used to return null for any name with no ':' - which is every
+            // plain icon name, "HUD_GridTiles_07" included - so the retry at
+            // the bottom of this method only ever ran for a FRAME-suffixed
+            // name, the one shape it cannot parse. The fix it was written for
+            // never ran; R20's log still printed the "_07" warning every
+            // launch. Read what RETURNS above your line.
             if (key.IndexOf(':') < 0)
             {
-                return (at >= 0)
-                    ? FindAsset(typeof(Sprite), key) as Sprite
-                    : null;
+                if (at >= 0)
+                {
+                    var bare = FindAsset(typeof(Sprite), key) as Sprite;
+
+                    if (bare != null)
+                        return bare;
+                }
+
+                return PaddedRetry(key);
             }
 
             Sprite[] frames = ResolveSpriteFrames(key);
 
-            return (frames != null && frames.Length > 0) ? frames[0] : null;
+            if (frames != null && frames.Length > 0)
+                return frames[0];
+
+            return PaddedRetry(name);
+        }
+
+        // "HUD_GridTiles_NN" IS THE WRONG SHAPE AND WE ARE THE ONES WHO TAUGHT
+        // IT. The real assets are `HUD_GridTiles_0` .. `_44` and
+        // `HUD_Modules_0` .. `_35` - UNPADDED. "NN" reads as two digits, and
+        // that string is in five places across the two repos including the
+        // worked example in the comment above this method
+        // ("HUD_GridTiles_04:2", which resolves to nothing).
+        //
+        // R17's log has the cost: `Icon 'HUD_GridTiles_07' is neither a game
+        // sprite nor one of the 169 ...`, on a file for a test he has not run
+        // yet. The name is wrong by one character, the asset is there, and the
+        // warning correctly reports a miss while repeating the very convention
+        // that caused it.
+        //
+        // > A DIAGNOSTIC THAT RESTATES A CONVENTION IS TEACHING IT. If the
+        // > convention is wrong, the warning is not a safety net - it is the
+        // > bug, printed once per reload, in the most authoritative voice the
+        // > mod has.
+        //
+        // So: accept the padded form, resolve it, and say what the real name
+        // is. Only ever a RETRY after the exact name has missed, so a genuine
+        // asset called `..._07` would still win, and only leading zeros in the
+        // trailing number group are touched.
+        private static Sprite PaddedRetry(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            int cut = name.LastIndexOf('_');
+
+            if (cut < 0 || cut >= name.Length - 1)
+                return null;
+
+            string head = name.Substring(0, cut + 1);
+            string tail = name.Substring(cut + 1);
+
+            for (int i = 0; i < tail.Length; i++)
+            {
+                if (!char.IsDigit(tail[i]))
+                    return null;
+            }
+
+            string trimmed = tail.TrimStart('0');
+
+            if (trimmed.Length == 0)
+                trimmed = "0";
+
+            if (trimmed == tail)
+                return null;
+
+            var hit = FindAsset(typeof(Sprite), head + trimmed) as Sprite;
+
+            if (hit == null)
+                return null;
+
+            Log.LogWarning(
+                "Icon '" + name + "' has a leading zero the game's own art " +
+                "does not use - the asset is called '" + head + trimmed +
+                "'. Using it. Stock icons are numbered without padding: " +
+                "HUD_GridTiles_0 to _44 and HUD_Modules_0 to _35, so it is " +
+                "_7 and not _07. Worth correcting in your file; some of this " +
+                "mod's own docs said \"HUD_GridTiles_NN\", which is where " +
+                "the padding comes from.");
+
+            return hit;
         }
 
         // Stock is tried FIRST: every module written before custom icons
@@ -404,7 +553,9 @@ namespace ModuleForge
             {
                 Log.LogWarning(
                     "Icon '" + name + "' is not a sprite in the game (module " +
-                    "icons are called HUD_GridTiles_NN). If you meant your " +
+                    "icons are called HUD_GridTiles_0 to _44 and " +
+                    "HUD_Modules_0 to _35, with NO leading zero - _7, not " +
+                    "_07). If you meant your " +
                     "own art: custom icons are loaded from Weapon Forge's " +
                     "'sprites' folder, and Weapon Forge is not installed. " +
                     "The module keeps the template's icon.");
@@ -415,16 +566,17 @@ namespace ModuleForge
                     "Icon '" + name + "' is neither a game sprite nor one of " +
                     "the " + ForgeInterop.CustomSpriteCount + " in Weapon " +
                     "Forge's sprites folder. Stock module icons are called " +
-                    "HUD_GridTiles_NN; your own art is named by the PNG " +
-                    "file (or by the name in its sheet .json). The module " +
-                    "keeps the template's icon.");
+                    "HUD_GridTiles_0 to _44 and HUD_Modules_0 to _35, with " +
+                    "NO leading zero - _7, not _07. Your own art is named by " +
+                    "the PNG file (or by the name in its sheet .json). The " +
+                    "module keeps the template's icon.");
             }
 
             return null;
         }
 
         // ONE OF THE GAME'S OWN SOUNDS, BY NAME - "Cells/Fuel",
-        // "Weapons/Popper/Shoot", "UI/Click". Returns the Sfx guid, which is
+        // "Weapons/Popper/Shoot", "UI/OK". Returns the Sfx guid, which is
         // what a sound field actually holds.
         //
         // NATIVE HERE RATHER THAN BORROWED, and the line is the same one

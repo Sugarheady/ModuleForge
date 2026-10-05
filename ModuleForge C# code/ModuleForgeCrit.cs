@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using BepInEx.Logging;
 using UnityEngine;
@@ -36,7 +36,7 @@ namespace ModuleForge
     public static class ModuleForgeCrit
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Crit");
+            ModuleForgeLog.Source("ModuleForge.Crit");
 
         // When does the dice get rolled?
         public enum Roll
@@ -86,6 +86,10 @@ namespace ModuleForge
 
             // See ModuleForgeUnitTint - 0..1, 1 is the full colour.
             public float tintStrength = 1f;
+
+            // multiply (the default) or replace. A multiply can only
+            // darken, so a pale flash on a dark enemy barely shows.
+            public int tintMode = ModuleForgeUnitTint.Multiply;
 
             // Camera kick, using the weapon's own ShakePreset.
             public bool shake;
@@ -252,8 +256,14 @@ namespace ModuleForge
             float bonus = 0f;
             bool found = false;
 
-            foreach (Contribution c in _global.Values)
+            // ★ Only this weapon's OWN ship's modules: before R19 a ship-grid
+            // crit module made ENEMY guns crit you too. See ModuleForgeScope.
+            foreach (var pair in _global)
             {
+                if (!ModuleForgeScope.Applies(pair.Key, weapon))
+                    continue;
+
+                Contribution c = pair.Value;
                 chance += c.chance;
                 bonus += c.multiplierBonus;
                 found = true;
@@ -295,9 +305,9 @@ namespace ModuleForge
             // The weapon's own modules first: a module wired to this gun is a
             // more specific statement than one sitting on the ship.
             if (weapon != null && _byWeapon.TryGetValue(weapon, out byKey))
-                Consider(byKey, ref chosen, ref clash);
+                Consider(byKey, weapon, false, ref chosen, ref clash);
 
-            Consider(_global, ref chosen, ref clash);
+            Consider(_global, weapon, true, ref chosen, ref clash);
 
             if (clash && !_saidLookClash)
             {
@@ -314,11 +324,16 @@ namespace ModuleForge
         }
 
         private static void Consider(
-            Dictionary<object, Contribution> byKey,
-            ref Options chosen, ref bool clash)
+            Dictionary<object, Contribution> byKey, WeaponBase weapon,
+            bool global, ref Options chosen, ref bool clash)
         {
-            foreach (Contribution c in byKey.Values)
+            foreach (var pair in byKey)
             {
+                Contribution c = pair.Value;
+
+                if (global && !ModuleForgeScope.Applies(pair.Key, weapon))
+                    continue;
+
                 if (c.options == null || c.options.IsPlain)
                     continue;
 
@@ -445,7 +460,8 @@ namespace ModuleForge
                         ModuleForgeUnitTint.Set(
                             hurt, ModuleForgeUnitTint.Crit, options.color,
                             Mathf.Max(0.05f, options.colorSeconds),
-                            options.colorPulse, options.tintStrength);
+                            options.colorPulse, options.tintStrength,
+                            options.tintMode);
                     }
                 }
 

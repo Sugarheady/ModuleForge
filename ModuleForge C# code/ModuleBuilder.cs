@@ -9,16 +9,46 @@ using UnityEngine;
 namespace ModuleForge
 {
     // Turns one module-definition JSON into a configured ModuleData.
-    // A module's "target" chooses which stock shell to clone, and the
-    // shell's moduleType (Passive vs WeaponAugmentation) is what routes
-    // it to the ship body vs weapons - we don't touch slots/clusters.
+    //
+    // A module's "target" chooses which stock shell to clone. The second
+    // half of that sentence used to read "and the shell's moduleType
+    // (Passive vs WeaponAugmentation) is what ROUTES it to the ship body
+    // vs weapons", and that was wrong - measured off the assets 2026-09-11
+    // after he asked whether the on-kill heat relief could work on weapon
+    // modules too:
+    //
+    //   * `ModuleSlotType Normal.compatibleModuleTypes` is
+    //     { Passive, WeaponAugmentation, PowerCore, Booster }, and
+    //     `ModuleGrid.GetSlotType` returns Normal for EVERY cell except
+    //     the six special ones (ship core, two weapon mounts, three
+    //     ability slots). So both types fit anywhere an ordinary module
+    //     fits.
+    //   * `ModuleCluster.RefreshConnectedModules` collects by ADJACENCY
+    //     and `RefreshPoweredModules` filters by POWER. Neither looks at
+    //     moduleType, and neither does `WeaponFactory.Create`, which
+    //     takes `cluster.ConnectedAndPoweredModules` whole.
+    //   * The two shells below are byte-identical apart from `moduleType`
+    //     and `color` - same empty powerCore, same powerLevel 0/0, same
+    //     canBeBoosted.
+    //
+    // So moduleType is PRESENTATION: the word at the top of the module
+    // card (`HoveredModuleInfo` prints `ModuleType.displayName` -
+    // "UPGRADES" vs "WEAPON MODS"), the shop section and `orderInShop`,
+    // and the icon background. Where a module acts is decided by the
+    // player, at the grid - which is what makes KillRewardEffect's
+    // grid-scoping work from either target with no flag.
+    //
+    // We still don't touch slots/clusters; the difference is that there
+    // was never anything to touch.
     public static class ModuleBuilder
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
-        // Same-type shells: cloning inherits the correct moduleType,
-        // color/powerCore shapes, slot compatibility and whitelist.
+        // Same-type shells: cloning inherits the correct moduleType and
+        // every serialized field we do not overwrite. These two differ
+        // ONLY in moduleType and color (see the note above), so the
+        // choice costs nothing at runtime either way.
         private const string ShipShell = "Module Passive Add Health";
         private const string WeaponShell = "Module Aug Firerate";
 
@@ -184,8 +214,29 @@ namespace ModuleForge
 
             // Unknown value -> fall back to loot so it isn't lost. ("none" is
             // a deliberate choice, so it skips that safety net.)
+            //
+            // ★ AND IT SAYS SO, because the silent version cost four test
+            // modules in one evening. Weapon Forge has a "starter" source
+            // (a loadout pick) and this mod deliberately does not - modules
+            // are not loadout picks - so `"source": "starter"` is the natural
+            // thing to write, is wrong here, and used to land you in the LOOT
+            // pool with nothing anywhere saying it had. The module then only
+            // appeared out of crates, which reads as "my module never
+            // dropped" rather than as a bad value. Silent-fallback family:
+            // the fallback is right, the silence is the bug.
             if (!inLoot && !inShop && !hidden)
+            {
                 inLoot = true;
+
+                Log.LogWarning(
+                    fileName + ": \"source\": \"" + source + "\" is not one " +
+                    "this mod knows, so this module falls back to LOOT and " +
+                    "will only appear out of crates. The choices are " +
+                    "\"loot\", \"shop\", \"both\" and \"none\". NOTE there is " +
+                    "no \"starter\" here - that is a Weapon Forge word for a " +
+                    "loadout pick, and a module is not one; use \"shop\" if " +
+                    "you want to be able to buy it while testing.");
+            }
 
             float shopPrice = (float?)root["shopPrice"] ?? 100f;
 
@@ -205,14 +256,27 @@ namespace ModuleForge
             // repeatInShop - otherwise it's removed after one purchase and
             // the increment would never be used. Turn it on automatically
             // when an increment was asked for, unless explicitly set.
-            if (shopPriceIncrement > 0f && !repeatInShop.HasValue &&
-                !module.repeatInShop)
+            // ⚠ WIDENED FOR "shopCostIncrement". This asked only about the
+            // MONEY increment, so a file that escalated an INGREDIENT and
+            // left the money flat kept a one-shot item - and the rising
+            // ingredient price was a number nothing would ever read, with
+            // the build log printing it as though it applied. Found while
+            // adding the ingredient keys: the guard was correct for the
+            // only escalation that existed when it was written.
+            bool rises =
+                shopPriceIncrement > 0f ||
+                ModuleForgeShopCost.Rises(
+                    ModuleForgeShopCost.Read(
+                        root, "shopCostIncrement", fileName));
+
+            if (rises && !repeatInShop.HasValue && !module.repeatInShop)
             {
                 module.repeatInShop = true;
                 Log.LogInfo(
-                    fileName + ": shop price increment set, so repeatInShop " +
+                    fileName + ": a rising price was set, so repeatInShop " +
                     "was enabled (the game only re-stocks and re-prices " +
-                    "repeatable items).");
+                    "repeatable items, so an increment on a one-shot item " +
+                    "is a number nothing ever reads).");
             }
 
             // May the same module drop more than once in a run?
@@ -233,6 +297,11 @@ namespace ModuleForge
                 lootWeight = (float?)root["lootWeight"] ?? 10f,
                 shopPrice = shopPrice,
                 shopPriceIncrement = shopPriceIncrement,
+                shopCost =
+                    ModuleForgeShopCost.Read(root, "shopCost", fileName),
+                shopCostIncrement = ModuleForgeShopCost.Read(
+                    root, "shopCostIncrement", fileName),
+                shopUnlock = ModuleForgeShopCost.ReadUnlock(root, fileName),
                 shopUnlockLevel = (int?)root["shopUnlockLevel"] ?? 1
             };
         }
@@ -349,9 +418,34 @@ namespace ModuleForge
                 return null;
             }
 
+            // TWO LINES THAT CONTRADICTED EACH OTHER, found in his R15 log:
+            //
+            //   [Warning] PiercingTest1.json: "lootFrom" was set but this
+            //             module is not loot-enabled, so it can never drop.
+            //   [Info   ] PiercingTest1.json: drops only from DropGroup
+            //             Modules Crate Caps
+            //
+            // The second is the louder of the two - it is a confident statement
+            // of fact about behaviour, and the reader has no way to know it is
+            // describing a pool the module can never be rolled from. He came
+            // back asking whether crate targeting had been done, having tested
+            // it against a file the mod had already refused.
+            //
+            // > **A confirmation printed after a refusal reads as the refusal
+            // > being overruled.** Parsing still runs in full (so a bad pool
+            // > name is still reported), but the summary says which of the two
+            // > states this file is in.
             Log.LogInfo(
-                fileName + ": drops only from " +
-                string.Join(", ", resolved.ToArray()));
+                fileName + ": " +
+                (inLoot
+                    ? "drops only from "
+                    : "would drop only from ") +
+                string.Join(", ", resolved.ToArray()) +
+                (inLoot
+                    ? ""
+                    : " - but it is NOT loot-enabled, so it drops from " +
+                      "nowhere until you add \"source\": \"loot\" (or " +
+                      "\"both\")."));
 
             return resolved.ToArray();
         }

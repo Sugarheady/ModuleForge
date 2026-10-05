@@ -22,7 +22,7 @@ namespace ModuleForge
     public class BurnColorTerrainPatch
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         // Per-call save state (Emit(Vector2Int) is single-threaded and
         // non-reentrant, so plain statics are safe). _tintedCount is the

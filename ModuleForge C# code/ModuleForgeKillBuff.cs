@@ -24,7 +24,7 @@ namespace ModuleForge
     public static class ModuleForgeKillBuff
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.KillBuff");
+            ModuleForgeLog.Source("ModuleForge.KillBuff");
 
         public const string Key = "onKill";
 

@@ -38,7 +38,7 @@ namespace ModuleForge
     public static class ModuleForgeKills
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Kills");
+            ModuleForgeLog.Source("ModuleForge.Kills");
 
         // Anything that wants telling about a kill. The Unit.Data is how a
         // module effect knows the kill was on ITS unit rather than someone
@@ -123,6 +123,32 @@ namespace ModuleForge
         {
             _firing = null;
             _firingFrame = -1;
+        }
+
+        // THE WEAPON `DoShoot` IS CURRENTLY RUNNING FOR, or null outside a shot.
+        //
+        // Added for `grow`, and the alternative it replaces is the interesting
+        // part. The obvious route is `WeaponOf(projectile)` from a
+        // `Projectile.Shoot` postfix - but `StampShot` is called from **this
+        // class's own** `Projectile.Shoot` postfix, and Harmony does not order
+        // two postfixes on one method. So half the time the map would not have
+        // the shot yet, and the feature would work or not depending on patch
+        // registration order: the worst kind of failure, because it would look
+        // intermittent rather than wrong.
+        //
+        // This has no such race. `WeaponBase.DoShoot` is the CALLER of
+        // `Projectile.Shoot`, so its prefix has provably already run.
+        //
+        // The frame test is the same one `StampShot` applies, and it matters
+        // for the same reason: `EndShoot` can be missed if the original throws,
+        // and a stale weapon read a frame later would attribute a shot to a gun
+        // that did not fire it.
+        public static WeaponBase Firing
+        {
+            get
+            {
+                return (_firingFrame == Time.frameCount) ? _firing : null;
+            }
         }
 
         public static void StampShot(Component shot)
@@ -241,6 +267,22 @@ namespace ModuleForge
         public static void Dispatch(Unit killer, Unit victim)
         {
             if (_listeners.Count == 0 || killer == null)
+                return;
+
+            // ★★ KILLING YOUR OWN SIDE PAYS NOTHING. Audit one mod, audit its
+            // twin: Weapon Forge's `ForgeKillsPatch.Dispatch` had exactly this
+            // hole, and so did this one. Nothing here asked whose side the
+            // victim was on, so a kill-reward module paid its full reward for
+            // destroying your own minion, your own charmed unit or your own
+            // wingman drone - a flat amount per kill, on a unit that is cheap
+            // to redeploy, which is a resource printer rather than a trickle.
+            //
+            // `IsFriendsWith` is the game's own question and the same one the
+            // friendly-fire skip in `Projectile.FixedUpdate` asks. It rests on
+            // `Player.IsFriendsWith(Player)` being true, which is not obvious -
+            // checked rather than assumed: `Player.asset` ships
+            // `allies: [ {fileID: 11400000} ]`, a self-reference.
+            if (victim != null && killer.IsFriendsWith(victim))
                 return;
 
             Unit.Data data = killer.ComponentData;

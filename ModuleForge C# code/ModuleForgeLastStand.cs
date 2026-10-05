@@ -22,7 +22,7 @@ namespace ModuleForge
     public class ModuleForgeLastStand : MonoBehaviour
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.LastStand");
+            ModuleForgeLog.Source("ModuleForge.LastStand");
 
         public class Spec
         {

@@ -28,7 +28,7 @@ namespace ModuleForge
     public static class ModuleForgeShipStats
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.ShipStats");
+            ModuleForgeLog.Source("ModuleForge.ShipStats");
 
         // ---- the stat table ------------------------------------------------
         public const string MaxSpeed = "maxspeed";

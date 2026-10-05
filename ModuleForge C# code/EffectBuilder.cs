@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using BepInEx.Logging;
@@ -13,7 +13,7 @@ namespace ModuleForge
     public static class EffectBuilder
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge");
+            ModuleForgeLog.Source("ModuleForge");
 
         // Cached reflection for ModifyWeaponProperty's private fields.
         private static FieldInfo _mwpTarget;
@@ -81,6 +81,66 @@ namespace ModuleForge
                     case "resourceonkill":
                         return BuildKillReward(entry, fileName);
 
+                    // CLASS NAME FIRST, as above. Spelled `contactDamage` to
+                    // match Weapon Forge exactly - one word for one idea across
+                    // both mods is a rule here, and this is the block most
+                    // likely to be copied between them.
+                    case "contactdamageeffect":
+                    case "contactdamage":
+                    case "contact":
+                    case "ram":
+                    case "spikes":
+                        return BuildContactDamage(entry, fileName);
+
+                    // CLASS NAME FIRST, as above. "finish" and "finisher" are
+                    // offered because that is what the mechanic is usually
+                    // called outside this codebase; "execute" is the name the
+                    // weapon side already uses and the two mods must spell one
+                    // idea one way.
+                    case "executeeffect":
+                    case "execute":
+                    case "finish":
+                    case "finisher":
+                        return BuildExecute(entry, fileName);
+
+                    // CLASS NAME FIRST. "growth" is accepted because Weapon
+                    // Forge's component is called ForgeGrowth while its JSON key
+                    // is "grow", and somebody reading one and writing the other
+                    // should not be punished for it.
+                    case "groweffect":
+                    case "grow":
+                    case "growth":
+                    case "growingshot":
+                        return BuildGrow(entry, fileName);
+
+                    // CLASS NAME FIRST, as always. "timeslow" and "hitstop" are
+                    // accepted because the time-bend half is the reason many
+                    // people reach for this at all, and a file that names only
+                    // that half should still find the effect - the two halves
+                    // live in one block exactly as they do on the weapon side.
+                    case "sloweffect":
+                    case "slow":
+                    case "chill":
+                    case "timeslow":
+                    case "hitstop":
+                        return BuildSlow(entry, fileName);
+
+                    // CLASS NAME FIRST, as always.
+                    //
+                    // ★ "spinup" IS DELIBERATELY NOT HERE, and that is the one
+                    // case label in this switch whose ABSENCE is the design.
+                    // It belongs to `ExtraWeaponStatEffect` (the game's flat
+                    // `WarmupTime`) and was already spoken for when this was
+                    // built. Weapon Forge calls this same feature `spinUp`, so
+                    // somebody who knows that mod WILL write it here and get a
+                    // one-off delay change with no meter - which is why the
+                    // other case warns rather than leaving them to find out.
+                    case "windupeffect":
+                    case "windup":
+                    case "rampup":
+                    case "spool":
+                        return BuildWindup(entry, fileName);
+
                     // "criteffect" is the CLASS NAME and it goes FIRST for the
                     // reason the comment above records: the builder page emits
                     // "type": "<ClassName>", and a switch listing only the
@@ -122,6 +182,20 @@ namespace ModuleForge
                     case "warmuptime":
                     case "spinup":
                         return BuildExtraWeaponStat(entry, type, fileName);
+
+                    // The CLASS NAME first, as above. NOT a bare "sound" or
+                    // "reload": "reload" already belongs to BuildAmmo and a
+                    // duplicate case would silently steal it, which is the
+                    // collision this switch has paid for twice.
+                    case "weaponcosmeticeffect":
+                    case "weaponcosmetic":
+                    case "cosmetic":
+                    case "feel":
+                    case "shake":
+                    case "rumble":
+                    case "muzzle":
+                    case "weaponsfx":
+                        return BuildWeaponCosmetic(entry, fileName);
 
                     case "weaponresourceeffect":
                     case "weaponresource":
@@ -201,6 +275,13 @@ namespace ModuleForge
                                     (string)entry["costResource"])
                         };
 
+                    // THE CLASS NAME FIRST. `KnownEffects` below advertises
+                    // class names and states in a comment that one is always
+                    // an accepted spelling - this case, `phasing` and
+                    // `piercecap` were the three where that was not true, so
+                    // the unknown-type warning was recommending three
+                    // spellings the switch would reject.
+                    case "burnratemoduleeffect":
                     case "burntickrateeffect":
                     case "burntickrate":
                     case "burnrate":
@@ -218,11 +299,13 @@ namespace ModuleForge
                     case "burntint":
                         return BuildBurnColor(entry, fileName);
 
+                    case "phasingmoduleeffect":
                     case "phasing":
                     case "phase":
                     case "noclip":
                         return new PhasingModuleEffect();
 
+                    case "piercemoduleeffect":
                     case "piercecap":
                     case "pierce":
                     case "piercing":
@@ -332,6 +415,42 @@ namespace ModuleForge
         // (The switch also takes friendlier aliases - "crit", "onKill" - which
         // this deliberately does not list; the canonical name is the one worth
         // showing.)
+        //
+        // THAT GUARANTEE WAS FALSE FOR FIVE OF THE NAMES THIS PRINTED, and
+        // found 2026-09-08 by reading the message in a real log rather than by
+        // any test. Two separate causes, which is why it took a while to see:
+        //
+        //  * THREE were the house rule simply not kept - `BurnRateModuleEffect`,
+        //    `PhasingModuleEffect` and `PierceModuleEffect` are class names the
+        //    switch had no case for, because those three are reached by the
+        //    friendlier `burnrate` / `phasing` / `piercecap` and nobody went
+        //    back for the canonical spelling. Cases added.
+        //  * TWO WERE ANOTHER MOD'S. This walked every loaded assembly, so with
+        //    Weapon Forge installed it advertised `ForgeBurnColorEffect` and
+        //    `ForgeBurnRateEffect` - real `ModuleEffect` subclasses that this
+        //    mod's switch has never heard of and never will.
+        //
+        // Same family as the original `killrewardeffect` bug that cost a round:
+        // **the mod rejecting a spelling its own diagnostics recommend.** And
+        // the lesson is narrower than "derive it from the code" - a derived
+        // list is only right if it is derived from the same source the decision
+        // is made from. A scan of the whole AppDomain answers "what effect
+        // classes exist anywhere", and the question is "what will my switch
+        // accept".
+        //
+        // THE BOUNDARY IS TWO ASSEMBLIES, NOT ONE. Scoping this to Module
+        // Forge's own assembly was the first attempt and was worse than the
+        // bug: most of the effect types the switch builds are the GAME's own
+        // `ModuleEffect` subclasses (`AddBurnEffect`, `ModifyWeaponProperty`,
+        // `AddShieldEffect` and nine more), so a this-assembly-only scan would
+        // have silently dropped twelve legitimate names from the very message
+        // that exists to list them. Caught by a test asserting the count, which
+        // is the only reason it did not ship.
+        //
+        // The exact rule: an effect the switch can build is declared either by
+        // the game or by this mod, and never by anybody else. The game's
+        // assembly is identified as the one that declares `ModuleEffect` itself
+        // rather than by name, so there is nothing to keep in step.
         private static string _known;
 
         private static string KnownEffects()
@@ -345,15 +464,26 @@ namespace ModuleForge
             {
                 var names = new List<string>();
 
-                foreach (Assembly asm in
-                         AppDomain.CurrentDomain.GetAssemblies())
+                var mine = new[]
                 {
+                    typeof(ModuleEffect).Assembly,      // the game's
+                    typeof(EffectBuilder).Assembly,     // this mod's
+                };
+
+                for (int a = 0; a < mine.Length; a++)
+                {
+                    if (a > 0 && mine[a] == mine[0])
+                        continue;
+
                     Type[] types;
 
-                    // A dynamic or partially-loaded assembly throws here, and
-                    // a warning helper must never be the thing that breaks a
-                    // build. Skip it and keep going.
-                    try { types = asm.GetTypes(); }
+                    // A partially-loaded assembly throws here, and a warning
+                    // helper must never be the thing that breaks a build.
+                    try { types = mine[a].GetTypes(); }
+                    catch (ReflectionTypeLoadException e)
+                    {
+                        types = e.Types ?? new Type[0];
+                    }
                     catch (Exception) { continue; }
 
                     foreach (Type t in types)
@@ -390,6 +520,1171 @@ namespace ModuleForge
         // kill or only one weapon's is decided by which GRID the module ends up
         // in, and the game tells the effect that for free. See the note on
         // KillRewardEffect.
+        // CONTACT DAMAGE - your ship damages what it touches.
+        private static ModuleEffect BuildContactDamage(
+            JObject entry, string fileName)
+        {
+            float dmg = Flat(entry["damage"], 3f);
+            bool bySpeed = FlatBool(entry["scaleBySpeed"] ?? entry["bySpeed"], false);
+            float perSpeed = Flat(entry["damagePerSpeed"], 1f);
+            float minSpeed = Flat(entry["minSpeed"], 6f);
+            int detect = ModuleForgeContact.ParseDetect((string)entry["detect"]);
+            bool boostOnly = FlatBool(
+                entry["whileBoosting"] ?? entry["onlyWhileBoosting"], false);
+            bool ignoreSelf = FlatBool(
+                entry["ignoreSelfDamage"] ?? entry["safeRam"], false);
+
+            var tint = ForgeAssets.ResolveColor((string)entry["tint"]
+                ?? (string)entry["color"]);
+
+            // ★ THE DAMAGE TYPE IS RESOLVED HERE, AT BUILD TIME, AND THAT IS
+            // THE WHOLE POINT. Contact damage has no weapon to borrow an element
+            // from - it is the hull, not a gun - and a null type makes the
+            // game's Damage refuse every point of it in silence. That exact gap
+            // cost two test rounds on the weapon side, reported as "they bump
+            // into each other and doesnt seem to hurt one another".
+            //
+            // So it falls back to a real resource rather than to null, and says
+            // which one it picked.
+            Resource type = ForgeAssets.ResolveResource((string)entry["damageType"]);
+
+            if (type == null)
+            {
+                type = ForgeAssets.ResolveResource("Health");
+
+                string asked = (string)entry["damageType"];
+
+                if (!string.IsNullOrEmpty(asked))
+                {
+                    Log.LogWarning(
+                        fileName + ": contactDamage \"damageType\": \"" + asked +
+                        "\" is not one of the game's resources. Fell back to " +
+                        "Health, because a contact hit with NO damage type is " +
+                        "refused in silence by the game - it has no weapon to " +
+                        "borrow an element from the way a projectile does.");
+                }
+                else
+                {
+                    Log.LogInfo(
+                        fileName + ": contactDamage has no \"damageType\", so " +
+                        "it uses Health. Unlike a projectile there is no weapon " +
+                        "here to inherit an element from, and a hit with no " +
+                        "type deals nothing at all - so this defaults rather " +
+                        "than failing quietly.");
+                }
+            }
+
+            var effect = new ContactDamageEffect
+            {
+                damage = SeriesOr(entry["damage"], 3f),
+                damageType = type,
+                scaleBySpeed = bySpeed,
+                damagePerSpeed = perSpeed,
+                minSpeed = minSpeed,
+                maxDamage = Flat(entry["maxDamage"], 999f),
+                push = Flat(entry["push"], 0f),
+                recoil = Flat(entry["recoil"], 0f),
+                repeatDelay = Flat(entry["repeatDelay"], 0.3f),
+                detect = detect,
+                radius = Flat(entry["radius"], 0f),
+                whileBoosting = boostOnly,
+                ignoreSelfDamage = ignoreSelf,
+                hasTint = tint != null,
+                tintPulse = Flat(entry["tintPulse"], 0f),
+                tintStrength = Mathf.Clamp01(
+                    Flat(entry["tintStrength"] ?? entry["colorStrength"], 1f)),
+                tintMode = TintMode(entry, fileName, "contactDamage")
+            };
+
+            if (tint != null)
+                effect.tint = tint;
+
+            if (!bySpeed && dmg <= 0f && effect.push == 0f && effect.recoil == 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": contactDamage does nothing - no \"damage\", " +
+                    "no \"push\", no \"recoil\" and \"scaleBySpeed\" is off. " +
+                    "Set at least one.");
+            }
+
+            // ★ THE DETECTION MODE IS THE INTERESTING WARNING, because choosing
+            // the wrong one fails ONLY on the hardest hits - which is exactly
+            // when a ram is supposed to matter, so it reads as the feature being
+            // unreliable rather than as a setting.
+            if (detect == ModuleForgeContact.DetectCollision)
+            {
+                Log.LogWarning(
+                    fileName + ": contactDamage \"detect\": \"collision\" uses " +
+                    "the stock Hazard's collision callbacks. EVERY unit in this " +
+                    "game uses DISCRETE collision detection on a 0.02s step, so " +
+                    "anything moving faster than about 50 units/s skips a " +
+                    "1-unit object between physics steps - and a boosting ship " +
+                    "is that fast. So this mode misses your hardest impacts " +
+                    "specifically. The default swept cast is ChargerHead's own " +
+                    "answer to the same problem; use \"collision\" only to " +
+                    "compare them.");
+            }
+
+            if (bySpeed && perSpeed <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": contactDamage \"scaleBySpeed\" is on but " +
+                    "\"damagePerSpeed\" is " + perSpeed.ToString("0.##") +
+                    ", so a ram at any speed deals nothing. The flat " +
+                    "\"damage\" value is IGNORED in this mode.");
+            }
+
+            // The ship's own crash damage is live exactly while boosting, which
+            // is the mode a ram module encourages - so the combination is worth
+            // naming rather than leaving to be discovered by dying.
+            if (boostOnly && !ignoreSelf)
+            {
+                Log.LogInfo(
+                    fileName + ": contactDamage is boost-gated, and the ship's " +
+                    "OWN crash damage (ImpactDamage) is enabled by the game " +
+                    "exactly while you boost - so ramming will hurt you too. " +
+                    "That may be the trade you want; set " +
+                    "\"ignoreSelfDamage\": true to suppress it while this " +
+                    "module is installed. It is restored when you pull the " +
+                    "card.");
+            }
+
+            Log.LogInfo(
+                fileName + ": contactDamage - YOUR SHIP hurts what it touches, " +
+                (bySpeed
+                    ? ("scaled by speed: " + perSpeed.ToString("0.##") +
+                       " per unit above " + minSpeed.ToString("0.##"))
+                    : ("a flat " + dmg.ToString("0.##"))) +
+                " per target every " +
+                Mathf.Max(0.02f, Flat(entry["repeatDelay"], 0.3f))
+                    .ToString("0.##") + "s, detected by " +
+                ModuleForgeContact.DetectWord(detect) + ". " +
+                (boostOnly
+                    ? "Armed ONLY while boosting."
+                    : "Armed whenever the module is powered and connected.") +
+                " It never touches your own side. This works the same in EITHER " +
+                "grid, unlike every other effect here - there is one hull " +
+                "however many guns are bolted to it.");
+
+            return effect;
+        }
+
+        // EXECUTE - finish anything a hit leaves under a threshold.
+        //
+        // Every scalar goes through Flat / FlatInt / FlatBool for the reason
+        // recorded on BuildKillReward: a plain `(float?)` cast throws on the
+        // `{baseValue, increaseMethod, change}` shape the builder page emits the
+        // moment a "per level" box is filled, and a throw here abandons the
+        // whole effect - the module then builds with ZERO effects and shows no
+        // card line either, which reads as several separate bugs.
+        private static ModuleEffect BuildExecute(
+            JObject entry, string fileName)
+        {
+            float pc = Flat(entry["percent"], 0.15f);
+            float fl = Flat(entry["flat"], 0f);
+            float cap = Flat(entry["maxTargetHealth"], 0f);
+            bool correctedPercent = false;
+
+            // A PERCENT ABOVE 1 IS CORRECTED RATHER THAN SHIPPED, and this is
+            // the one correction in the block that genuinely has to happen.
+            // "percent": 20 means "under 2000% health", which EVERY living
+            // thing satisfies - so the module would delete everything it
+            // touched, instantly, and read as the mod being broken rather than
+            // as a typo. Nobody types 20 meaning 2000%.
+            if (pc > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": execute \"percent\": " + pc.ToString("0.##") +
+                    " is above 1, which would mean \"below " +
+                    (pc * 100f).ToString("0") + "% health\" - every living " +
+                    "thing in the game. Read as a PERCENT and converted to " +
+                    (pc / 100f).ToString("0.###") + ". Write it as a fraction " +
+                    "(0.15 = 15%) to say so on purpose.");
+
+                pc = pc / 100f;
+                correctedPercent = true;
+            }
+
+            // STACKING (R20 252, his design): added to the threshold for every
+            // copy of THIS module past the first. Same fraction rule as
+            // `percent`, and for the same reason - "stackPercent": 5 means 5%.
+            float sp = Mathf.Max(0f, Flat(entry["stackPercent"], 0f));
+            float sf = Mathf.Max(0f, Flat(entry["stackFlat"], 0f));
+
+            if (sp > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": execute \"stackPercent\": " + sp.ToString("0.##") +
+                    " is above 1 - read as a PERCENT and converted to " +
+                    (sp / 100f).ToString("0.###") + ". Write it as a fraction " +
+                    "(0.05 = +5% per extra copy) to say so on purpose.");
+
+                sp = sp / 100f;
+            }
+
+            var colour = ForgeAssets.ResolveColor((string)entry["color"]);
+
+            var effect = new ExecuteEffect
+            {
+                percent = SeriesOr(entry["percent"], 0.15f),
+                flat = SeriesOr(entry["flat"], 0f),
+                maxTargetHealth = cap,
+                stackPercent = sp,
+                stackFlat = sf,
+                hasColor = colour != null,
+                colorSeconds = Flat(entry["colorSeconds"], 0.25f),
+                colorPulse = Flat(entry["colorPulse"], 0f),
+                tintStrength = Mathf.Clamp01(
+                    Flat(entry["tintStrength"] ?? entry["colorStrength"], 1f)),
+                tintMode = TintMode(entry, fileName, "execute")
+            };
+
+            // THE CORRECTION HAS TO REACH THE SERIES, not just the local used
+            // for the log line. `SeriesOr` read the raw token, so without this
+            // the warning would announce a division that the module never
+            // performed - a log that describes work it did not do is worse than
+            // no log, because it is believed.
+            //
+            // The per-level `change` is divided too: a "per level" box filled
+            // in the same units as a percent-shaped base is meant in those same
+            // units, and leaving it raw would make level 2 jump by whole
+            // multiples of the tank.
+            if (correctedPercent)
+            {
+                FloatSeries s = effect.percent;
+                s.baseValue = pc;
+                s.change = s.change / 100f;
+                effect.percent = s;
+            }
+
+            if (colour != null)
+                effect.color = colour;
+
+            string sfx = (string)entry["sfx"];
+
+            if (!string.IsNullOrEmpty(sfx))
+            {
+                string guid = ForgeInterop.TryResolveSound(sfx, fileName);
+
+                if (string.IsNullOrEmpty(guid))
+                    guid = ForgeAssets.StockSound(sfx, fileName);
+
+                effect.sfxGuid = guid;
+            }
+
+            if (pc <= 0f && fl <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": execute has neither a \"percent\" nor a " +
+                    "\"flat\" threshold, so nothing can ever be finished. Set " +
+                    "one - \"percent\": 0.15 finishes anything under 15% of " +
+                    "its own health.");
+            }
+
+            // THE BOSS GUARD MATTERS MORE THAN IT LOOKS, and its absence is
+            // silent otherwise: a 15% execute on a 2000-health boss is 300 free
+            // damage in one hit, which is a different module than the finisher
+            // the author thinks they wrote.
+            if (cap <= 0f && pc > 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": execute has no \"maxTargetHealth\", so it " +
+                    "applies to BOSSES too. At " + (pc * 100f).ToString("0.#") +
+                    "% that is a large chunk of a big health pool taken in one " +
+                    "hit. Set \"maxTargetHealth\" to the biggest pool you want " +
+                    "this to touch, or leave it off deliberately.");
+            }
+
+            Log.LogInfo(
+                fileName + ": execute - finishes anything left below " +
+                (pc > 0f ? ((pc * 100f).ToString("0.#") + "% health") : "") +
+                (pc > 0f && fl > 0f ? " or " : "") +
+                (fl > 0f ? (fl.ToString("0.##") + " health") : "") +
+                (cap > 0f
+                    ? (", skipping anything with more than " +
+                       cap.ToString("0.##") + " max health")
+                    : ", with NO size limit") +
+                ". The kill credits itself through the game's own Die(), so " +
+                "on-kill rewards, leech and anything else listening all see " +
+                "it. Burn ticks and gas clouds can never execute - they report " +
+                "no weapon.");
+
+            if (sp > 0f || sf > 0f)
+            {
+                var ladder = new List<string>();
+
+                for (int n = 2; n <= 4; n++)
+                {
+                    string at = "";
+
+                    if (pc > 0f || sp > 0f)
+                        at = (Mathf.Min(1f, pc + sp * (n - 1)) * 100f).ToString("0.#") + "%";
+
+                    if (fl > 0f || sf > 0f)
+                        at += (at.Length > 0 ? " / " : "") +
+                              (fl + sf * (n - 1)).ToString("0.##") + " health";
+
+                    ladder.Add(n + " copies " + at);
+                }
+
+                Log.LogInfo(
+                    fileName + ": execute stacks - each copy of this module past " +
+                    "the first adds " +
+                    (sp > 0f ? "+" + (sp * 100f).ToString("0.#") + "%" : "") +
+                    (sp > 0f && sf > 0f ? " and " : "") +
+                    (sf > 0f ? "+" + sf.ToString("0.##") + " health" : "") +
+                    " (" + string.Join(", ", ladder.ToArray()) + "). Copies of " +
+                    "the SAME file only: a different execute module still " +
+                    "counts on its own, strongest wins. The card shows the " +
+                    "stack you are carrying.");
+
+                if (pc > 0f && sp > 0f && pc + sp * 3 >= 1f)
+                {
+                    Log.LogWarning(
+                        fileName + ": with 4 copies this execute reaches 100% - " +
+                        "every hit then finishes anything under the size cap. " +
+                        "That is the file's own numbers; lower \"stackPercent\" " +
+                        "if it is not what you meant.");
+                }
+            }
+            else
+            {
+                Log.LogInfo(
+                    fileName + ": execute - copies of this module do NOT stack " +
+                    "(no \"stackPercent\" / \"stackFlat\"): with two on the " +
+                    "grid, the strongest one counts. Add \"stackPercent\" to " +
+                    "make each extra copy widen it.");
+            }
+
+            return effect;
+        }
+
+        // GROW - a shot that changes size as it travels.
+        private static ModuleEffect BuildGrow(JObject entry, string fileName)
+        {
+            float f = Flat(entry["from"], 0.4f);
+            float t = Flat(entry["to"], 3f);
+            float span = Flat(entry["span"], 0f);
+            bool overTime = FlatBool(entry["overTime"] ?? entry["time"], false);
+            bool hitbox = FlatBool(entry["hitbox"], true);
+
+            var effect = new GrowEffect
+            {
+                from = SeriesOr(entry["from"], 0.4f),
+                to = SeriesOr(entry["to"], 3f),
+                overTime = overTime,
+                span = span,
+                hitbox = hitbox,
+                curve = Flat(entry["curve"], 1f),
+                clamp = FlatBool(entry["clamp"], true)
+            };
+
+            if (f == t)
+            {
+                Log.LogWarning(
+                    fileName + ": grow has \"from\" and \"to\" both at " +
+                    f.ToString("0.##") + ", so the shot never changes size. " +
+                    "Give them different values - 0.4 to 3 starts small and " +
+                    "finishes large, 3 to 0.4 does the reverse.");
+            }
+
+            // A KEY THAT IS READ ON ONE SHOT TYPE AND NOT THE OTHER HAS TO SAY
+            // SO. A module applies to whatever gun the player slots it beside,
+            // and on a lobbed weapon there is no `Radius` to leave alone - the
+            // collider scales with the transform, so the hitbox always follows.
+            // Silently ignoring the switch is how a setting becomes folklore.
+            if (!hitbox)
+            {
+                Log.LogWarning(
+                    fileName + ": grow \"hitbox\": false makes the growth " +
+                    "purely visual on ordinary bullets - but it CANNOT be " +
+                    "honoured on a lobbed or rocket weapon. Those collide with " +
+                    "a real Collider2D that scales with the sprite, so there " +
+                    "is no separate radius to hold still. On one of those the " +
+                    "hitbox grows regardless.");
+            }
+
+            if (span <= 0f)
+            {
+                Log.LogInfo(
+                    fileName + ": grow \"span\" is 0, so each shot borrows its " +
+                    "own " + (overTime ? "lifetime" : "range") + " and peaks " +
+                    "exactly as it runs out. That is usually what you want; " +
+                    "set a number to fix the ramp regardless of the gun. NOTE " +
+                    "a lobbed shot's range is inert in this game - the engine " +
+                    "never enforces it - so a distance ramp on one falls back " +
+                    "to 10 units.");
+            }
+
+            Log.LogInfo(
+                fileName + ": grow - shots " +
+                (t >= f ? "swell" : "shrink") + " from x" + f.ToString("0.##") +
+                " to x" + t.ToString("0.##") + " over " +
+                (span > 0f
+                    ? (span.ToString("0.##") + (overTime ? "s" : " units"))
+                    : ("their own " + (overTime ? "lifetime" : "range"))) +
+                (hitbox
+                    ? ". The HITBOX grows with the art - Radius is what the " +
+                      "game rebuilds its collision sweep from, so this is a " +
+                      "real damage-area change and not a picture."
+                    : ". Visual only on bullets.") +
+                " There is no damage multiplier here on purpose: this mod has " +
+                "no damage stack and pierce falloff already writes that field " +
+                "in flight, so a second writer would silently erase it.");
+
+            return effect;
+        }
+
+        // SLOW - a debuff on what you hit, and a bend in time when you land it.
+        //
+        // Every scalar goes through Flat / FlatInt / FlatBool for the reason
+        // recorded on BuildKillReward: a plain `(float?)` cast throws on the
+        // `{baseValue, increaseMethod, change}` shape the builder page emits the
+        // moment a "per level" box is filled, and a throw here abandons the
+        // whole effect - the module then builds with ZERO effects and shows no
+        // card line either, which reads as several separate bugs.
+        private static ModuleEffect BuildSlow(JObject entry, string fileName)
+        {
+            bool debuff = FlatBool(
+                entry["debuff"] ?? entry["slowEnabled"], true);
+
+            float amount = Flat(entry["amount"], 0.5f);
+            float duration = Flat(entry["duration"], 2f);
+            float floor = Flat(entry["floor"], 0.2f);
+            int mode = ModuleForgeSlow.ParseMode((string)entry["mode"]);
+            int maxStacks = FlatInt(entry["maxStacks"], 3);
+            bool correctedAmount = false;
+
+            // NAMING `timeScale` TURNS THE TIME HALF ON. The two halves share no
+            // mechanism, so a file that only wants hit-stop should not have to
+            // set a flag as well as a number - and a file that wants the debuff
+            // alone must not get a time bend it never asked for.
+            bool hasTime = FlatBool(
+                entry["timeSlow"] ?? entry["hasTimeSlow"],
+                entry["timeScale"] != null);
+
+            float timeScale = Flat(entry["timeScale"], 0.35f);
+            float timeDuration = Flat(entry["timeDuration"], 0.25f);
+            float timeCooldown = Flat(entry["timeCooldown"], 0f);
+
+            bool onHit = FlatBool(entry["onHit"], true);
+            bool onKill = FlatBool(entry["onKill"], false);
+
+            // AN AMOUNT ABOVE 1 IS CORRECTED RATHER THAN SHIPPED, the same
+            // correction `execute`'s percent gets and for the same reason:
+            // "amount": 50 means "50 times normal speed", which is a SPEED-UP
+            // module that reads as the slow being broken. Nobody types 50
+            // meaning 5000%.
+            if (amount > 1f)
+            {
+                Log.LogWarning(
+                    fileName + ": slow \"amount\": " + amount.ToString("0.##") +
+                    " is above 1, and this is a FRACTION OF NORMAL SPEED - so " +
+                    "that would mean " + (amount * 100f).ToString("0") +
+                    "% speed, i.e. faster. Read as a percentage and converted " +
+                    "to " + (amount / 100f).ToString("0.###") + ". Write it as " +
+                    "a fraction (0.5 = half speed) to say so on purpose.");
+
+                amount = amount / 100f;
+                correctedAmount = true;
+            }
+
+            var tint = ForgeAssets.ResolveColor((string)entry["tint"]
+                ?? (string)entry["color"]);
+
+            var effect = new SlowEffect
+            {
+                hasSlow = debuff,
+                amount = SeriesOr(entry["amount"], 0.5f),
+                duration = SeriesOr(entry["duration"], 2f),
+                mode = mode,
+                cooldown = Flat(entry["cooldown"], 0f),
+                maxStacks = maxStacks,
+                floor = floor,
+
+                slowMove = FlatBool(entry["slowMove"] ?? entry["move"], true),
+                slowTurn = FlatBool(entry["slowTurn"] ?? entry["turn"], true),
+                slowFire = FlatBool(entry["slowFire"] ?? entry["fireRate"], true),
+                slowKnockback = FlatBool(
+                    entry["slowKnockback"] ?? entry["knockback"], true),
+                slowShots = FlatBool(entry["slowShots"] ?? entry["shots"], true),
+
+                hasTint = tint != null,
+                tintStrength = Mathf.Clamp01(
+                    Flat(entry["tintStrength"] ?? entry["colorStrength"], 1f)),
+                tintMode = TintMode(entry, fileName, "slow"),
+
+                hasTimeSlow = hasTime,
+                timeScale = SeriesOr(entry["timeScale"], 0.35f),
+                timeDuration = timeDuration,
+                timeCooldown = timeCooldown,
+                timeMode = ModuleForgeSlow.ParseMode(
+                    (string)(entry["timeMode"] ?? entry["mode"])),
+                timeEase = FlatBool(entry["timeEase"] ?? entry["ease"], true),
+                timeUnscaled = FlatBool(entry["timeUnscaled"], true),
+
+                onHit = onHit,
+                onKill = onKill
+            };
+
+            // THE CORRECTION HAS TO REACH THE SERIES, not just the local used
+            // for the log line. `SeriesOr` read the raw token, so without this
+            // the warning would announce a division the module never performed -
+            // a log that describes work it did not do is worse than no log,
+            // because it is believed.
+            if (correctedAmount)
+            {
+                FloatSeries s = effect.amount;
+                s.baseValue = amount;
+                s.change = s.change / 100f;
+                effect.amount = s;
+            }
+
+            if (tint != null)
+                effect.tint = tint;
+
+            // ---- warnings -----------------------------------------------
+
+            if (!debuff && !hasTime)
+            {
+                Log.LogWarning(
+                    fileName + ": slow has its debuff switched off and no " +
+                    "\"timeSlow\", so this effect does nothing at all. Set " +
+                    "\"amount\" for the debuff or \"timeScale\" for hit-stop.");
+            }
+
+            if (!onHit && !onKill)
+            {
+                Log.LogWarning(
+                    fileName + ": slow has both \"onHit\" and \"onKill\" off, " +
+                    "so it can never fire. One of them has to be true.");
+            }
+
+            if (debuff && !effect.slowMove && !effect.slowTurn &&
+                !effect.slowFire && !effect.slowKnockback && !effect.slowShots)
+            {
+                Log.LogWarning(
+                    fileName + ": slow has every part switched off (move, " +
+                    "turn, fire rate, knockback, shots), so the debuff lands " +
+                    "and changes nothing. Leave at least one on.");
+            }
+
+            // ★ THE FLOOR IS THE STRONGEST A STACK CAN GET, SO A FLOOR ABOVE
+            // THE AMOUNT SILENTLY WEAKENS THE MODULE. `Factor()` is
+            // `max(amount, floor)`, so "amount": 0.3 with the default floor of
+            // 0.2 is fine, while "amount": 0.1 with floor 0.2 is really a 20%
+            // slow wearing a 10% label - and the card would print the number
+            // the module does not use.
+            if (debuff && floor > amount)
+            {
+                Log.LogWarning(
+                    fileName + ": slow \"floor\": " + floor.ToString("0.##") +
+                    " is WEAKER than \"amount\": " + amount.ToString("0.##") +
+                    " - and the floor is the strongest this can ever get, so " +
+                    "the real slow is " + floor.ToString("0.##") + " and the " +
+                    "amount is ignored. Lower is stronger here. Set the floor " +
+                    "below the amount, or leave it out.");
+            }
+
+            if (debuff && mode == ModuleForgeSlow.Stack && maxStacks <= 1)
+            {
+                Log.LogWarning(
+                    fileName + ": slow \"mode\": \"stack\" with " +
+                    "\"maxStacks\": " + maxStacks + " behaves exactly like " +
+                    "\"refresh\" - there is no second stack to reach. Raise " +
+                    "maxStacks or drop the mode.");
+            }
+
+            if (debuff && duration <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": slow \"duration\" is " +
+                    duration.ToString("0.##") + ", so the debuff expires on " +
+                    "the frame it lands. It is clamped up to 0.05s. Unlike " +
+                    "\"timeDuration\" this one does NOT mean forever.");
+            }
+
+            // ★ 0 MEANS FOREVER ON THE TIME HALF AND NOWHERE ELSE, which is
+            // exactly the sort of asymmetry that gets shipped. The game's
+            // `TimeScaleModifier.IsIndefinit` is `duration <= 0f`, and an
+            // indefinite modifier is never evaluated for expiry - it sits there
+            // holding the whole game in slow motion with nothing to clear it.
+            if (hasTime && timeDuration <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": slow \"timeDuration\" is " +
+                    timeDuration.ToString("0.##") + ". In this game a time " +
+                    "modifier with a duration of 0 or less is INDEFINITE - it " +
+                    "would hold the game in slow motion for the rest of the " +
+                    "run. Clamped to 0.01s. Set a real duration.");
+            }
+
+            // ★ THE MODULE PROBLEM THE WEAPON VERSION NEVER HAD. A weapon's
+            // timeSlow fires when THAT weapon connects; a module on the SHIP
+            // grid fires when ANY of your weapons connects, and a beam or a
+            // shotgun connects many times a second. The author cannot be told
+            // which grid the player will use it in, so this is said whenever
+            // there is no cooldown at all.
+            if (hasTime && timeCooldown <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": slow has \"timeSlow\" with no " +
+                    "\"timeCooldown\". A MODULE applies to every gun it is " +
+                    "connected to, so on the SHIP grid this bends time on " +
+                    "every hit from every weapon you carry - a beam or a " +
+                    "shotgun will re-trigger it several times a second and the " +
+                    "game will feel like it is stuttering rather than " +
+                    "punching. Set \"timeCooldown\" to about 1, or " +
+                    "\"onKill\": true with \"onHit\": false.");
+            }
+
+            // ---- the summary --------------------------------------------
+
+            Log.LogInfo(
+                fileName + ": slow - " +
+                (debuff
+                    ? ("your hits drop what they touch to " +
+                       (amount * 100f).ToString("0.#") + "% speed for " +
+                       duration.ToString("0.##") + "s (" +
+                       ModuleForgeSlow.ModeWord(mode) + " on a repeat hit), " +
+                       "affecting " + Parts(effect) + ". ")
+                    : "the debuff is off. ") +
+                (hasTime
+                    ? ("Time bends to x" + timeScale.ToString("0.##") + " for " +
+                       timeDuration.ToString("0.##") + " real seconds" +
+                       (timeCooldown > 0f
+                            ? (", at most once every " +
+                               timeCooldown.ToString("0.##") + "s. ")
+                            : ". "))
+                    : "") +
+                "It never touches you or your own side. Which grid you place " +
+                "this in decides whether it is one gun or all of them. NOTE " +
+                "the debuff rides the victim's RIGIDBODY, not its movement " +
+                "component - the AI snapshots and restores those, which would " +
+                "make a temporary slow permanent at random.");
+
+            // WHICH MOD IS HOLDING THE RIGIDBODY IS WORTH SAYING AT BUILD TIME
+            // TOO. ModuleForgeSlowCompat says it on the first slow of a run,
+            // which is the right place for "this actually happened" - but the
+            // person reading a build log is the person editing the file, and
+            // they should not have to fire a shot to learn that the debuff's
+            // settings are carried across into another mod's engine.
+            if (debuff && !ModuleForgeSlowCompat.OwnsDebuff)
+            {
+                Log.LogInfo(
+                    fileName + ": Weapon Forge is installed, so IT owns a " +
+                    "unit's rigidbody while slowed and this module's debuff is " +
+                    "applied through its engine. Every setting above crosses " +
+                    "over; only \"onHit\"/\"onKill\" stay here. Two mods each " +
+                    "remembering a unit's original speed is what would make " +
+                    "the slow permanent, which is why there is one owner.");
+            }
+
+            return effect;
+        }
+
+        private static string Parts(SlowEffect e)
+        {
+            var bits = new List<string>();
+
+            if (e.slowMove) bits.Add("movement");
+            if (e.slowTurn) bits.Add("turning");
+            if (e.slowFire) bits.Add("fire rate");
+            if (e.slowShots) bits.Add("the speed of their shots");
+            if (e.slowKnockback) bits.Add("weight (your shoves throw them further)");
+
+            return (bits.Count == 0)
+                ? "nothing" : string.Join(", ", bits.ToArray());
+        }
+
+        // Resolve one sound name to a guid: custom first (Weapon Forge's
+        // library, borrowed), then the game's own by readable name. The same
+        // two-step five other call sites in this file spell out by hand -
+        // written as a helper here because `windup` needs it three times, and
+        // three copies of a two-step lookup is how the third one goes stale.
+        private static string Sfx(JToken token, string fileName)
+        {
+            string asked = (token != null && token.Type == JTokenType.String)
+                ? (string)token : null;
+
+            if (string.IsNullOrEmpty(asked))
+                return "";
+
+            string guid = ForgeInterop.TryResolveSound(asked, fileName);
+
+            if (string.IsNullOrEmpty(guid))
+                guid = ForgeAssets.StockSound(asked, fileName);
+
+            return guid ?? "";
+        }
+
+        // WINDUP - sustained fire rewards you.
+        //
+        // Every scalar goes through Flat / FlatInt / FlatBool for the reason
+        // recorded on BuildKillReward: a plain `(float?)` cast throws on the
+        // `{baseValue, increaseMethod, change}` shape the builder page emits the
+        // moment a "per level" box is filled, and a throw here abandons the
+        // whole effect.
+        private static ModuleEffect BuildWindup(JObject entry, string fileName)
+        {
+            float up = Flat(entry["windUpTime"] ?? entry["spinUpTime"], 1.5f);
+            float down = Flat(entry["windDownTime"] ?? entry["spinDownTime"], 1f);
+            int ramp = ModuleForgeWindup.ParseRamp((string)entry["ramp"]);
+            int steps = FlatInt(entry["steps"], 3);
+
+            var effect = new WindupEffect
+            {
+                windUpTime = SeriesOr(
+                    entry["windUpTime"] ?? entry["spinUpTime"], 1.5f),
+                windDownTime = down,
+                grace = Flat(entry["grace"], 0.25f),
+                ramp = ramp,
+                steps = steps,
+
+                // The two that default ON, matching the weapon side.
+                rate = FlatBool(entry["rate"] ?? entry["fireRate"], true),
+                fireRateAtFull = Flat(
+                    entry["fireRateAtFull"] ?? entry["fireRate"], 2f),
+
+                accuracy = FlatBool(entry["accuracy"], true),
+                accuracyAtFull = Flat(entry["accuracyAtFull"], 1f),
+                spreadAtFull = Flat(
+                    entry["spreadAtFull"] ?? entry["spread"], 1f),
+
+                damage = FlatBool(entry["damage"], false),
+                damageAtFull = Flat(entry["damageAtFull"], 1.5f),
+
+                pellets = FlatBool(entry["pellets"], false),
+                pelletsAtFull = Flat(entry["pelletsAtFull"], 2f),
+
+                cheaper = FlatBool(entry["cheaper"], false),
+                costAtFull = Flat(entry["costAtFull"], 0.5f),
+
+                speed = FlatBool(entry["speed"], false),
+                speedAtFull = Flat(entry["speedAtFull"], 1.5f),
+
+                range = FlatBool(entry["range"], false),
+                rangeAtFull = Flat(entry["rangeAtFull"], 1.5f),
+
+                size = FlatBool(entry["size"], false),
+                sizeAtFull = Flat(entry["sizeAtFull"], 1.5f),
+
+                burst = FlatBool(entry["burst"], false),
+                burstAtFull = Flat(entry["burstAtFull"], 2f),
+                burstDelayAtFull = Flat(entry["burstDelayAtFull"], 1f),
+
+                burn = FlatBool(entry["burn"], false),
+                burnAtFull = Flat(entry["burnAtFull"], 2f),
+
+                explosion = FlatBool(entry["explosion"], false),
+                explosionAtFull = Flat(entry["explosionAtFull"], 1.5f),
+
+                push = FlatBool(entry["push"], false),
+                pushAtFull = Flat(entry["pushAtFull"], 2f),
+                knockbackAtFull = Flat(entry["knockbackAtFull"], 1f),
+
+                warmup = FlatBool(entry["warmup"], false),
+                warmupAtFull = Flat(entry["warmupAtFull"], 0f),
+
+                lifetime = FlatBool(entry["lifetime"], false),
+                lifetimeAtFull = Flat(entry["lifetimeAtFull"], 1.5f),
+
+                showOnHud = FlatBool(entry["showOnHud"] ?? entry["show"], true),
+                readySfxGuid = Sfx(entry["readySfx"], fileName),
+                stepSfxGuid = Sfx(entry["stepSfx"], fileName),
+                lostSfxGuid = Sfx(entry["lostSfx"], fileName)
+            };
+
+            // ---- warnings -----------------------------------------------
+
+            // A ramp that pays nothing is a valid file and a dead module.
+            if (!effect.rate && !effect.accuracy && !effect.damage &&
+                !effect.pellets && !effect.cheaper && !effect.speed &&
+                !effect.range && !effect.size && !effect.burst &&
+                !effect.burn && !effect.explosion && !effect.push &&
+                !effect.warmup && !effect.lifetime)
+            {
+                Log.LogWarning(
+                    fileName + ": windup has every reward switched off, so the " +
+                    "meter fills and nothing happens. Turn at least one on - " +
+                    "\"rate\" and \"accuracy\" are the two that default on.");
+            }
+
+            // ★ THE ACCURACY REWARD HAS NOTHING TO REMOVE ON MOST GUNS, and
+            // that is a fact about the GAME rather than about this module.
+            // Most stock weapons ship angleVariance 0 - White Popper, White
+            // Shotgun, Bolt, Worm - so a shotgun's inaccuracy is entirely its
+            // deliberate `spread`, which this leaves alone by default. A module
+            // cannot know which gun it will be slotted beside, so it is said
+            // here rather than being discovered as "the accuracy reward does
+            // nothing".
+            if (effect.accuracy && Mathf.Abs(effect.spreadAtFull - 1f) < 0.001f)
+            {
+                Log.LogInfo(
+                    fileName + ": windup's accuracy reward tightens " +
+                    "\"angleVariance\", and MOST STOCK WEAPONS SHIP THAT AT " +
+                    "ZERO (Popper, Shotgun, Bolt, Worm) - so on those it has " +
+                    "nothing to remove and you will see no change. A " +
+                    "shotgun's fan is \"spread\", which is left alone unless " +
+                    "you set \"spreadAtFull\" (below 1 tightens it; that turns " +
+                    "a shotgun into a slug gun, which is the point or a " +
+                    "surprise).");
+            }
+
+            if (up <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": windup \"windUpTime\" is " +
+                    up.ToString("0.##") + ", so the gun is fully wound the " +
+                    "instant you pull the trigger. That is legal and is a " +
+                    "different module - there is no ramp to feel. Set a " +
+                    "positive number for a wind-up.");
+            }
+
+            // ★ A WARNING THAT READS THE BASE IS NOT A WARNING ABOUT THE
+            // MODULE, and the check above reads the base.
+            //
+            // `windUpTime` is a series and its per-level change is NEGATIVE by
+            // design - a shorter wind-up is the natural thing for a level to
+            // buy. So a perfectly ordinary card (base 2, change -1) is 2s at
+            // level 1 and **0s at level 3**, which is the instant-full case the
+            // warning above exists for, reached by a route that warning cannot
+            // see. A BoosterCore is enough to get there.
+            //
+            // Same family as the cruise-speed line that stated a derived number
+            // without the conditions it was derived under: say WHICH LEVEL, and
+            // let the author decide whether that is the module they meant.
+            float perLevel = 0f;
+
+            {
+                FloatSeries s = effect.windUpTime;
+
+                if (s.increaseMethod == FloatSeries.IncreaseMethod.Add)
+                    perLevel = s.change;
+            }
+
+            if (up > 0f && perLevel < 0f)
+            {
+                // baseValue + change * (level - 1) <= 0
+                int zeroAt = Mathf.CeilToInt(up / -perLevel) + 1;
+
+                string tail =
+                    (zeroAt <= 6)
+                        ? (" - and a BoosterCore or two can reach that, so " +
+                           "check it is the module you meant.")
+                        : ", which is out of reach in practice.";
+
+                Log.LogInfo(
+                    fileName + ": windup's wind-up time falls by " +
+                    (-perLevel).ToString("0.##") + "s per level, so it is " +
+                    up.ToString("0.##") + "s at level 1 and reaches ZERO at " +
+                    "level " + zeroAt + " - fully wound from the first shot, " +
+                    "with no ramp left to feel" + tail +
+                    " (It is floored at 0; it never goes negative.)");
+            }
+
+            if (ramp == ModuleForgeWindup.Stepped && steps <= 1)
+            {
+                Log.LogWarning(
+                    fileName + ": windup \"ramp\": \"stepped\" with " +
+                    "\"steps\": " + steps + " is the same as \"smooth\" - " +
+                    "there is no second step to reach.");
+            }
+
+            // ★ THE ONE THAT CANNOT BE ANSWERED AT BUILD TIME, said anyway.
+            Log.LogInfo(
+                fileName + ": windup - hold the trigger for " +
+                up.ToString("0.##") + "s and the gun winds up " +
+                ModuleForgeWindup.RampWord(ramp, steps) + ", winding back down " +
+                "over " + down.ToString("0.##") + "s once you stop. " +
+                "An empty gun does not wind up and a jam or a stun costs you " +
+                "the wind-up. GADGET WEAPONS CANNOT BE REACHED - they fire " +
+                "directly and never touch the trigger machinery this reads, " +
+                "so a windup module beside one does nothing. The weapon-side " +
+                "version refuses a gadget outright; a module cannot, because " +
+                "you choose the slot - so the card says so and the log warns " +
+                "the first time such a weapon fires.");
+
+            return effect;
+        }
+
+        // The `gas` block on a kill-reward module: the cloud left on a corpse.
+        //
+        // EVERY SCALAR GOES THROUGH Flat / FlatInt / FlatBool, and that is not
+        // stylistic. A plain `(float?)` cast throws `Can not convert Object to
+        // Single` on the `{baseValue, increaseMethod, change}` shape the builder
+        // page emits the moment a "per level" box is filled - and a throw here
+        // abandons the whole effect, so the module builds with ZERO effects: no
+        // payout, no pickup, no buff and no card line either. That read as four
+        // separate bugs and cost five failed tests. These fields are not
+        // series-capable, but the page can still emit that shape into any of
+        // them, and "this cast can never see an object" is exactly the
+        // reasoning that was wrong last time.
+        private static ModuleForgeGas.Config BuildGas(
+            JObject gas, string fileName)
+        {
+            if (gas == null)
+                return null;
+
+            var cfg = new ModuleForgeGas.Config
+            {
+                radius = Flat(gas["radius"], 1.6f),
+                grows = FlatBool(gas["grow"] ?? gas["grows"], true),
+                growTo = Flat(gas["growTo"], 3.2f),
+                growTime = Flat(gas["growTime"], 1.2f),
+                duration = Flat(gas["duration"], 4f),
+                fade = Flat(gas["fade"], 0.6f),
+
+                drifts = FlatBool(gas["drift"] ?? gas["drifts"], false),
+                driftDamping = Flat(gas["driftDamping"], 0.4f),
+
+                max = FlatInt(gas["max"], 24),
+
+                burnPerSecond = Flat(gas["burnPerSecond"] ?? gas["burn"], 0f),
+                damagePerSecond =
+                    Flat(gas["damagePerSecond"] ?? gas["damage"], 0f),
+                slow = Flat(gas["slow"], 0f),
+                push = Flat(gas["push"], 0f),
+                extinguish = Flat(gas["extinguish"], 0f),
+                extinguishTerrain = Flat(gas["extinguishTerrain"], 0f),
+                igniteTerrain = Flat(gas["igniteTerrain"], 0f),
+
+                hitEnemies = FlatBool(gas["hitEnemies"], true),
+                hitPlayer = FlatBool(gas["hitPlayer"], false),
+                tickRate = Flat(gas["tickRate"], 0.25f),
+
+                chains = FlatBool(gas["chains"] ?? gas["gasChains"], true),
+
+                puffs = FlatInt(gas["puffs"], 5),
+                swirl = Flat(gas["swirl"], 25f),
+
+                sprite = (string)gas["sprite"] ?? "",
+                sfx = (string)gas["sfx"] ?? "",
+                damageType = (string)gas["damageType"] ?? ""
+            };
+
+            // `driftSpeed` is the honest name and `drift` is the switch, but
+            // the weapon side spells the SPEED `drift` and the mode `cloud`, so
+            // both readings arrive. Taken as a number only when it is one.
+            cfg.drift = Flat(gas["driftSpeed"], Flat(gas["driftRate"], 1.2f));
+
+            var colour = ForgeAssets.ResolveColor((string)gas["color"]);
+
+            if (colour != null)
+                cfg.color = colour;
+
+            // Named element, or null meaning "inherit from whichever gun scored
+            // the kill" - resolved per cloud, never cached onto this config.
+            if (!string.IsNullOrEmpty(cfg.damageType))
+            {
+                cfg.damageResource = ForgeAssets.ResolveResource(cfg.damageType);
+
+                if (cfg.damageResource == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": gas \"damageType\": \"" + cfg.damageType +
+                        "\" is not one of the game's resources, so the cloud " +
+                        "falls back to the element of whichever weapon scored " +
+                        "the kill. That is the default and is usually what you " +
+                        "want - remove the key to say so on purpose.");
+                }
+            }
+
+            // STOCK ART ONLY, and the warning says which half it searched
+            // rather than only naming the string - a message that names the
+            // INPUT but not the CAPABILITY sends the reader to check their
+            // spelling when the answer is that the lookup cannot see their
+            // folder at all.
+            if (!string.IsNullOrEmpty(cfg.sprite))
+            {
+                cfg.artFrames = ForgeAssets.ResolveSpriteFrames(cfg.sprite);
+
+                if (cfg.artFrames == null || cfg.artFrames.Length == 0)
+                {
+                    Log.LogWarning(
+                        fileName + ": gas \"sprite\": \"" + cfg.sprite +
+                        "\" did not resolve. This key searches the GAME's own " +
+                        "sprites only - custom PNGs are Weapon Forge's loader " +
+                        "and it rebuilds what it returns at the module-icon " +
+                        "size (24x24 at PPU 40), which is wrong for a gas " +
+                        "puff. The cloud falls back to its own soft blob, " +
+                        "which is what most clouds should use anyway.");
+                }
+                else
+                {
+                    // OPT-IN, the same rule the five one-sprite keys follow on
+                    // the weapon side: a bare name stays a still puff so
+                    // nothing already written starts moving on the next launch.
+                    // `:0-8` or `@12` is how you ask.
+                    cfg.animates =
+                        cfg.sprite.IndexOf(':') >= 0 ||
+                        cfg.sprite.IndexOf('@') >= 0;
+
+                    cfg.artFps = Flat(gas["spriteFps"], 12f);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(cfg.sfx))
+            {
+                // Custom first, then stock - the same order every sprite key
+                // uses. Borrowed from Weapon Forge when present; looking a name
+                // up in an asset the GAME owns is native here.
+                string guid = ForgeInterop.TryResolveSound(cfg.sfx, fileName);
+
+                if (string.IsNullOrEmpty(guid))
+                    guid = ForgeAssets.StockSound(cfg.sfx, fileName);
+
+                cfg.sfxGuid = guid;
+            }
+
+            WarnAboutGas(cfg, fileName);
+
+            return cfg;
+        }
+
+        // Said at BUILD time because every one of these is knowable from the
+        // file, and a cloud that does nothing is invisible in play - there is
+        // no failure to see, only an absence.
+        private static void WarnAboutGas(
+            ModuleForgeGas.Config cfg, string fileName)
+        {
+            if (!cfg.DoesAnything)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill has a \"gas\" block that carries no " +
+                    "payload, so no cloud is left at all. Set at least one of " +
+                    "\"damagePerSecond\", \"burnPerSecond\", \"slow\", " +
+                    "\"push\", \"extinguish\", \"extinguishTerrain\" or " +
+                    "\"igniteTerrain\". Colour and puffs describe a cloud; " +
+                    "they do not make one.");
+
+                return;
+            }
+
+            if (cfg.duration <= 0f)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"duration\" is " +
+                    cfg.duration.ToString("0.##") + ", so the cloud dies on " +
+                    "the frame it is born. Give it seconds to live.");
+            }
+
+            if (cfg.grows && cfg.growTo < cfg.radius)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"growTo\" (" +
+                    cfg.growTo.ToString("0.##") + ") is SMALLER than " +
+                    "\"radius\" (" + cfg.radius.ToString("0.##") +
+                    "), so the cloud shrinks instead of swelling. That is a " +
+                    "real effect and may be what you want - set " +
+                    "\"grow\": false if it is not.");
+            }
+
+            // Cell fire thresholds are NOT normalised and this is the number
+            // people get wrong: CellType_Solid ignites at 45 and is topped up
+            // by every burning neighbour every frame, so a small extinguish
+            // rate can never win against it and the feature looks broken on the
+            // only terrain most rooms are made of.
+            if (cfg.extinguishTerrain > 0f && cfg.extinguishTerrain < 45f)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"extinguishTerrain\": " +
+                    cfg.extinguishTerrain.ToString("0.#") + " will put soft " +
+                    "terrain out (Slime 1, Tuff 1.3, Moss 2.5) and will NEVER " +
+                    "beat CellType_Solid, the main terrain, which ignites at " +
+                    "45 and is re-lit by every burning neighbour each frame. " +
+                    "Use about 120 if you meant to douse rock.");
+            }
+
+            if (cfg.max <= 0)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"max\": " + cfg.max + " means UNLIMITED " +
+                    "clouds from this module. With \"chains\" on, a packed " +
+                    "room can leave one cloud per corpse with nothing trimming " +
+                    "them. It is still bounded - every enemy dies once - but " +
+                    "set a number if you would rather not find the ceiling in " +
+                    "a boss room.");
+            }
+
+            if (cfg.tickRate <= 0.02f)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"tickRate\": " +
+                    cfg.tickRate.ToString("0.###") + " is at or below one " +
+                    "physics step, so the cloud applies its payload as fast as " +
+                    "the engine allows. Each application drives a hit flash, a " +
+                    "hit sound and the aggro event, so this is loud rather " +
+                    "than strong - \"damagePerSecond\" already means per " +
+                    "second whatever the tick rate is.");
+            }
+
+            if (cfg.hitPlayer)
+            {
+                Log.LogWarning(
+                    fileName + ": gas \"hitPlayer\" is ON, so this module's " +
+                    "own clouds damage YOU as well. That is a real build and " +
+                    "not a mistake, but it is off by default for a reason. " +
+                    "Note \"extinguish\" reaches you either way - putting your " +
+                    "own fire out is the point of an extinguisher gas.");
+            }
+
+            Log.LogInfo(
+                fileName + ": onKill \"gas\" - every kill leaves a " +
+                cfg.duration.ToString("0.#") + "s cloud on the corpse" +
+                (cfg.grows
+                    ? (", swelling " + cfg.radius.ToString("0.#") + " -> " +
+                       cfg.growTo.ToString("0.#"))
+                    : (", radius " + cfg.radius.ToString("0.#"))) +
+                Payload(cfg) +
+                ". At most " +
+                (cfg.max > 0 ? cfg.max.ToString() : "unlimited") +
+                " of this module's clouds exist at once, the oldest fading to " +
+                "make room. " +
+                (cfg.chains
+                    ? "\"chains\" is ON (the default): a cloud that scores its " +
+                      "own kill leaves another, so a packed room chains " +
+                      "through itself. It cannot run away - every enemy dies " +
+                      "once - but set \"chains\": false for one cloud per kill " +
+                      "you scored yourself."
+                    : "\"chains\" is OFF: only kills you score leave gas, and " +
+                      "a kill by the cloud itself leaves nothing.") +
+                (string.IsNullOrEmpty(cfg.damageType)
+                    ? " The cloud is resisted and coloured like whichever gun " +
+                      "scored the kill, which is what keeps one ship-grid " +
+                      "module sensible across every weapon you carry."
+                    : " Damage type is fixed to \"" + cfg.damageType +
+                      "\" whatever scored the kill."));
+        }
+
+        private static string Payload(ModuleForgeGas.Config cfg)
+        {
+            string s = "";
+
+            if (cfg.damagePerSecond > 0f)
+                s += ", damage " + cfg.damagePerSecond.ToString("0.#") + "/s";
+
+            if (cfg.burnPerSecond > 0f)
+                s += ", burn " + cfg.burnPerSecond.ToString("0.#") + "/s";
+
+            if (cfg.slow > 0f)
+                s += ", slows";
+
+            if (cfg.push != 0f)
+                s += (cfg.push > 0f ? ", shoves outward" : ", pulls inward");
+
+            if (cfg.extinguish > 0f)
+                s += ", puts units' fires out";
+
+            if (cfg.extinguishTerrain > 0f)
+                s += ", douses terrain";
+
+            if (cfg.igniteTerrain > 0f)
+                s += ", sets terrain alight";
+
+            return s;
+        }
+
         private static ModuleEffect BuildKillReward(
             JObject entry, string fileName)
         {
@@ -398,6 +1693,14 @@ namespace ModuleForge
             JToken amountTok = entry["amount"] ?? entry["resourceAmount"];
 
             float burn = Flat(entry["clearBurn"], 0f);
+
+            // "coolHeat" is the key; "cool" and "clearHeat" are accepted
+            // because Weapon Forge's build log called its BURN field "cools"
+            // until R15 and both are what somebody would try first.
+            JToken heatTok =
+                entry["coolHeat"] ?? entry["cool"] ?? entry["clearHeat"];
+
+            float heat = Flat(heatTok, 0f);
             float fire = Flat(entry["buffFireRate"], 0f);
             float dmg = Flat(entry["buffDamage"], 0f);
             float dur = Flat(entry["buffDuration"], 0f);
@@ -410,11 +1713,13 @@ namespace ModuleForge
                 chance = SeriesOr(entry["chance"], 1f),
                 maxPerSecond = Flat(entry["maxPerSecond"], 0f),
                 clearBurn = SeriesOr(entry["clearBurn"], 0f),
+                coolHeat = SeriesOr(heatTok, 0f),
                 buffDuration = dur,
                 buffFireRate = SeriesOr(entry["buffFireRate"], 0f),
                 buffDamage = SeriesOr(entry["buffDamage"], 0f),
                 buffMaxStacks = FlatInt(entry["buffMaxStacks"], 1),
-                buffIndicator = (string)entry["buffIndicator"] ?? ""
+                buffIndicator = (string)entry["buffIndicator"] ?? "",
+                gas = BuildGas(entry["gas"] as JObject, fileName)
             };
 
             // A payout with no resource named is the commonest mistake here,
@@ -448,15 +1753,92 @@ namespace ModuleForge
                     "nothing.");
             }
 
-            if (!wantsResource && burn <= 0f && dur <= 0f)
+            // THIS LIST HAS TO LEARN EVERY NEW KEY, and forgetting to update it
+            // is not a cosmetic slip - it cost a whole test round on the weapon
+            // side. R17's test 231 was run against a build without `onKill.gas`
+            // and the only evidence anyone had was this same warning printing
+            // its OLD key set, which reads as "your file is wrong" when it
+            // means "this build has never heard of that key". His log carried
+            // the proof and nobody could see it.
+            bool wantsGas = effect.gas != null && effect.gas.DoesAnything;
+
+            if (!wantsResource && burn <= 0f && heat <= 0f && dur <= 0f &&
+                !wantsGas)
             {
                 Log.LogWarning(
                     fileName + ": onKill pays out nothing at all. Set at least " +
                     "one of \"amount\" (with a \"resource\"), " +
-                    "\"clearBurn\", or a buff.");
+                    "\"clearBurn\" (puts out your ship burning), " +
+                    "\"coolHeat\" (takes heat off an \"overheat\" weapon), " +
+                    "\"gas\" (leaves a cloud on the corpse), " +
+                    "or a buff.");
+            }
+
+            // Said at BUILD time as well as on the first kill, because this one
+            // depends on which mods are installed rather than on the file - and
+            // the answer is already known here.
+            if (heat > 0f && !ForgeInterop.HasWeaponOverheat)
+            {
+                Log.LogWarning(
+                    fileName + ": onKill \"coolHeat\" needs WEAPON FORGE - the " +
+                    "\"overheat\" meter is a per-weapon block from a Weapon " +
+                    "Forge weapon file, and Module Forge deliberately has no " +
+                    "heat system of its own to fall back on (one owner per " +
+                    "mechanic). The rest of this module still works; this key " +
+                    "will do nothing.");
             }
 
             return effect;
+        }
+
+        // ★ THE ONE OWNER OF "which tint mode did this file ask for", AND EVERY
+        // TINTED EFFECT MUST COME THROUGH IT.
+        //
+        // `ModuleForgeUnitTint.ParseMode` returns **-1** for a word it does not
+        // know - deliberately, so the caller can warn instead of silently
+        // handing back the default. It returns -1 for a MISSING word too, and
+        // that is the trap: a layer published with mode -1 is skipped by BOTH
+        // passes in `ModuleForgeUnitTint.Write` (`if (mode != Replace) continue`
+        // and `if (mode != Multiply) continue`), so **the tint is computed,
+        // stored, re-asserted every frame and never drawn**. No warning
+        // anywhere, because nothing was wrong with the colour.
+        //
+        // `contactDamage` and `execute` both called ParseMode directly and both
+        // shipped with exactly that: a working tint that could only appear if
+        // the file happened to spell out "tintMode". Found 2026-09-18 while
+        // building `slow`, by reading the two `continue` guards rather than by
+        // any test - a tint that does not appear reads as a colour choice.
+        //
+        // The parameter exists so the warning names the block the reader is
+        // editing; it used to say "crit" for every caller, which is the same
+        // family of wrong-name-in-a-diagnostic bug as `HUD_GridTiles_07`.
+        private static int TintMode(JObject entry, string fileName, string block)
+        {
+            JToken t = (entry != null)
+                ? (entry["tintMode"] ?? entry["colorMode"])
+                : null;
+
+            if (t == null)
+                return ModuleForgeUnitTint.Multiply;
+
+            string raw = (t.Type == JTokenType.String) ? (string)t : null;
+            int mode = ModuleForgeUnitTint.ParseMode(raw);
+
+            if (mode < 0)
+            {
+                Log.LogWarning(
+                    fileName + ": " + block + " \"tintMode\": \"" + raw +
+                    "\" is not " +
+                    "one I know, so it stays \"multiply\". The choices are " +
+                    "\"multiply\" (tints by darkening - the original " +
+                    "behaviour, also spelled \"tint\") and \"replace\" " +
+                    "(paints the colour on, so it can brighten a dark enemy " +
+                    "and reads much stronger).");
+
+                return ModuleForgeUnitTint.Multiply;
+            }
+
+            return mode;
         }
 
         private static Resource Res(JObject entry, string fileName)
@@ -513,6 +1895,12 @@ namespace ModuleForge
                 // arrive, not about what the field means.
                 tintStrength = Mathf.Clamp01(
                     Flat(entry["tintStrength"] ?? entry["colorStrength"], 1f)),
+
+                // multiply (the default) or replace. A multiply can only
+                // darken, so no strength value makes a pale flash show up on a
+                // dark enemy - see ModuleForgeUnitTint. An unrecognised word
+                // warns rather than quietly staying on multiply.
+                tintMode = TintMode(entry, fileName, "crit"),
 
                 shake = FlatBool(entry["shake"], false)
             };
@@ -945,6 +2333,36 @@ namespace ModuleForge
             // key, so the common case is one line of JSON.
             string alias = (type ?? "").Trim().ToLowerInvariant();
 
+            // ★ THE NAME COLLISION, ANSWERED OUT LOUD.
+            //
+            // `spinup` here means the game's flat `WarmupTime` - one number,
+            // applied once, no meter, no reward. Weapon Forge's `spinUp` is a
+            // RAMPING METER that pays out while you hold the trigger, and this
+            // mod now has that too, as `windup`.
+            //
+            // So a player who knows one mod writes the word and gets the other
+            // mod's mechanic. Both readings are legitimate and the JSON is
+            // valid either way, which is precisely why this cannot be inferred
+            // from the other keys and must not be: type resolution that depends
+            // on which fields happen to be present is a new failure mode, not a
+            // fix. It stays unambiguous and says so instead.
+            //
+            // Said every time rather than once per session: it is a build-time
+            // line about one file, the author is reading the log for that file,
+            // and a per-session gate would hide it on the second module.
+            if (alias == "spinup")
+            {
+                Log.LogWarning(
+                    fileName + ": \"type\": \"spinup\" in a MODULE means the " +
+                    "game's flat \"warmupTime\" - the delay before the gun " +
+                    "starts firing, applied once, with no meter and no " +
+                    "reward. If you wanted Weapon Forge's SPIN-UP (hold the " +
+                    "trigger and the gun gets better as it winds up), that is " +
+                    "\"windup\" here. The two mods spell this one idea " +
+                    "differently on purpose, because this word was already " +
+                    "taken. Write \"warmuptime\" to say you meant the delay.");
+            }
+
             string target =
                 (alias == "pushforce" || alias == "push")
                     ? ExtraWeaponStatEffect.PushForce
@@ -1025,6 +2443,242 @@ namespace ModuleForge
                     "all - the game returns before the push - so this and a " +
                     "pierce module cancel each other out.");
             }
+
+            return effect;
+        }
+
+        // THE WEAPON'S FEEL - the ten cosmetic properties on WeaponBase.
+        //
+        // Everything resolves HERE, at build time, rather than at Modify time,
+        // for the reason every other resolver in this file does: a warning can
+        // name the file. A module that resolved its sound on the first shot
+        // could only say "something is wrong somewhere".
+        private static ModuleEffect BuildWeaponCosmetic(
+            JObject entry, string fileName)
+        {
+            var effect = new WeaponCosmeticEffect();
+
+            int sounds = 0;
+
+            for (int slot = 0; slot < WeaponCosmeticEffect.SfxCount; slot++)
+            {
+                string key = WeaponCosmeticEffect.SfxKey(slot);
+                string asked = (string)entry[key];
+
+                // "shootSfx" is the one people will reach for, so it takes the
+                // two obvious shorthands as well.
+                if (string.IsNullOrEmpty(asked) &&
+                    slot == WeaponCosmeticEffect.Shoot)
+                {
+                    asked = (string)entry["sfx"] ?? (string)entry["sound"];
+                }
+
+                if (string.IsNullOrEmpty(asked))
+                    continue;
+
+                // CUSTOM FIRST (Weapon Forge's folder, when installed), then
+                // one of the GAME's own sound NAMES, then treat it as a raw
+                // guid. Identical to the crit and kill-reward paths - the one
+                // vocabulary across both mods.
+                string guid = ForgeInterop.TryResolveSound(asked, fileName);
+
+                if (string.IsNullOrEmpty(guid))
+                    guid = ForgeAssets.StockSound(asked, fileName);
+
+                string resolved =
+                    !string.IsNullOrEmpty(guid) ? guid : asked.Trim();
+
+                if (!ForgeInterop.IsKnownSoundGuid(resolved))
+                {
+                    // NOT SET, deliberately. Assigning an unknown id would
+                    // leave the weapon SILENT on that event - `PlaySfx`
+                    // returns -1 for an id it cannot find and nobody checks -
+                    // so a typo would take away a sound the gun already had.
+                    // Leaving it alone keeps the template's own.
+                    Log.LogWarning(
+                        fileName + ": cosmetic \"" + key + "\": '" + asked +
+                        "' is not a sound I know, so the weapon KEEPS ITS " +
+                        "OWN " + WeaponCosmeticEffect.SfxLabel(slot) +
+                        " rather than being silenced. Custom sounds live in " +
+                        "Weapon Forge's sounds folder and need that mod " +
+                        "installed; a GAME sound is named the way the audio " +
+                        "database names it, with slashes - all 259 are " +
+                        "listed in SOUNDS.txt next to this mod" +
+                        (ForgeInterop.HasCustomSounds
+                            ? "; the startup log lists what loaded."
+                            : " - it is not, so only the game's own sound " +
+                              "names work here."));
+
+                    continue;
+                }
+
+                effect.sfxGuid[slot] = resolved;
+                effect.sfxName[slot] = asked.Trim();
+                sounds++;
+            }
+
+            // ---- particles --------------------------------------------------
+            string muzzle =
+                (string)entry["muzzleParticle"] ??
+                (string)entry["muzzle"] ??
+                (string)entry["muzzleParticlePrefab"];
+
+            if (!string.IsNullOrEmpty(muzzle))
+            {
+                effect.muzzleParticle =
+                    ForgeAssets.ResolveParticlePrefab(muzzle, fileName);
+
+                if (effect.muzzleParticle == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": muzzle flash '" + muzzle + "' is not a " +
+                        "particle system in the game, so the weapon keeps its " +
+                        "own. The eleven stock ones are \"MuzzleParticle\" " +
+                        "plus Beacon, CrawlerLaser, Cross, CrossAlpha, Drone, " +
+                        "Fly, Laser, LaserRed, Popper, PopperRed or Sniper.");
+                }
+            }
+
+            string reloadFx =
+                (string)entry["reloadParticle"] ??
+                (string)entry["reloadParticlePrefab"];
+
+            if (!string.IsNullOrEmpty(reloadFx))
+            {
+                effect.reloadParticle =
+                    ForgeAssets.ResolveParticlePrefab(reloadFx, fileName);
+
+                if (effect.reloadParticle == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": reload effect '" + reloadFx + "' is " +
+                        "not a particle system in the game, so the weapon " +
+                        "keeps its own.");
+                }
+            }
+
+            // ---- shake ------------------------------------------------------
+            string shakeName = (string)entry["shakePreset"];
+
+            if (!string.IsNullOrEmpty(shakeName))
+            {
+                Type shakeType = WeaponCosmeticEffect.ShakePresetType();
+
+                effect.shakePreset = (shakeType != null)
+                    ? ForgeAssets.FindAsset(shakeType, shakeName.Trim())
+                    : null;
+
+                if (effect.shakePreset == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": shake preset '" + shakeName + "' was " +
+                        "not found, so the weapon keeps its own camera kick. " +
+                        "The stock ones are Shake_Gunshot_Small, " +
+                        "Shake_Gunshot_Medium, Shake_Collision, " +
+                        "Shake_Excavate, Shake_Explosion, " +
+                        "Shake_Explosion_Long, Shake_Explosion_MIN, " +
+                        "Shake_Explosion_MAX, Shake_Shipdamage, Shake_Wound, " +
+                        "SmallExplosion and LargeExplosion.");
+                }
+            }
+
+            // Series-capable, so a BoosterCore can make the kick grow. Read
+            // through SeriesOr like every other scalar here: a "per level" box
+            // on the page emits an OBJECT, and a plain (float?) cast on that
+            // throws and abandons the whole effect.
+            if (entry["shake"] != null)
+            {
+                effect.hasShakeScale = true;
+                effect.shakeScale = SeriesOr(entry["shake"], 1f);
+            }
+
+            if (effect.shakePreset != null && effect.hasShakeScale)
+            {
+                Log.LogInfo(
+                    fileName + ": both \"shakePreset\" and \"shake\" were " +
+                    "set. The named preset is used as-is; naming one is the " +
+                    "deliberate act and the number is only an adjustment to " +
+                    "the weapon's OWN kick, so the two cannot combine.");
+            }
+
+            // ---- rumble -----------------------------------------------------
+            string rumbleName = (string)entry["rumblePreset"];
+
+            if (!string.IsNullOrEmpty(rumbleName))
+            {
+                effect.rumblePreset = ForgeAssets.FindAsset(
+                    typeof(RumblePreset), rumbleName.Trim()) as RumblePreset;
+
+                if (effect.rumblePreset == null)
+                {
+                    Log.LogWarning(
+                        fileName + ": rumble preset '" + rumbleName + "' was " +
+                        "not found, so the weapon keeps its own. The stock " +
+                        "ones are \"Rumble WeaponShot\" plus Small, Medium, " +
+                        "Large, Flame or Derbis, and \"Rumble Ship\" plus " +
+                        "Boost, Damage or Death.");
+                }
+            }
+
+            if (entry["rumble"] != null)
+            {
+                effect.hasRumbleScale = true;
+                effect.rumbleScale = SeriesOr(entry["rumble"], 1f);
+            }
+
+            if (effect.rumblePreset != null && effect.hasRumbleScale)
+            {
+                Log.LogInfo(
+                    fileName + ": both \"rumblePreset\" and \"rumble\" were " +
+                    "set; the named preset is used as-is.");
+            }
+
+            // THE GAMEPAD CAVEAT, said once at build time where the file can be
+            // named. `ShipGamepadRumble.Rumble` returns immediately unless the
+            // ship is on a gamepad, and what survives that is scaled again by a
+            // per-player rumble slider in the options - so this key can do
+            // nothing for a player through no fault of the module. Said here
+            // rather than discovered; the card carries "(PAD)" for the same
+            // reason.
+            if (effect.rumblePreset != null || effect.hasRumbleScale)
+            {
+                Log.LogInfo(
+                    fileName + ": rumble is GAMEPAD ONLY - on keyboard and " +
+                    "mouse this part of the module does nothing at all, and " +
+                    "even on a pad it is scaled by the rumble setting in the " +
+                    "game's options. The card says \"(PAD)\" so a player is " +
+                    "not left guessing.");
+            }
+
+            // NOTHING ASKED FOR IS A REAL MISTAKE, not a no-op to shrug at: the
+            // module builds, takes a grid slot, shows no lines and does nothing,
+            // which reads as the mod being broken rather than the file being
+            // empty. Same reasoning as the "tint strength with no tint" warning
+            // in Weapon Forge.
+            if (sounds == 0 &&
+                effect.muzzleParticle == null &&
+                effect.reloadParticle == null &&
+                effect.shakePreset == null && !effect.hasShakeScale &&
+                effect.rumblePreset == null && !effect.hasRumbleScale)
+            {
+                Log.LogWarning(
+                    fileName + ": a \"cosmetic\" effect was declared but " +
+                    "nothing in it was set, so it will do nothing and show " +
+                    "no lines on the card. The keys are shootSfx, " +
+                    "continuousShootSfx, startSfx, releaseSfx, warmupSfx, " +
+                    "reloadSfx, muzzleParticle, reloadParticle, shake / " +
+                    "shakePreset and rumble / rumblePreset.");
+            }
+
+            // WEAPON GRID ONLY, and this is the one thing about the effect that
+            // is not discoverable from the card. IWeaponModifier.Modify is only
+            // called for modules in a WEAPON's cluster, so the same file on the
+            // ship grid is inert - no warning is possible at runtime because
+            // the effect simply never runs.
+            Log.LogInfo(
+                fileName + ": cosmetics apply to the WEAPON this module is " +
+                "connected to, so the module has to sit in a weapon's grid. " +
+                "On the ship grid it does nothing.");
 
             return effect;
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -32,7 +32,8 @@ namespace ModuleForge
     // not the "am I on a weapon?" test it looks like. `_weapon` is that test.
     [Serializable]
     public class CritEffect
-        : ModuleEffect, IWeaponModifier, IHasDescriptionForUnit
+        : ModuleEffect, IWeaponModifier, IHasDescriptionForUnit,
+          ModuleForgeLive.IGated
     {
         // ---- the numbers ------------------------------------------------
         // 0.15 = 15%. Series so a level can buy reliability. Values over 1 are
@@ -59,6 +60,9 @@ namespace ModuleForge
         // 0..1, how hard the crit flash comes through. See
         // ModuleForgeUnitTint; 1 is the old look.
         public float tintStrength = 1f;
+
+        // multiply (the default) or replace - see ModuleForgeUnitTint.
+        public int tintMode = ModuleForgeUnitTint.Multiply;
 
         public bool shake;
 
@@ -122,6 +126,7 @@ namespace ModuleForge
                         colorSeconds = colorSeconds,
                         colorPulse = colorPulse,
                         tintStrength = tintStrength,
+                        tintMode = tintMode,
                         shake = shake
                     };
                 }
@@ -134,11 +139,48 @@ namespace ModuleForge
 
         public override void OnInstalled(Unit.Data unit)
         {
+            // Recorded before anything is pushed: a ship-grid contribution
+            // reaches only the guns of the unit carrying it.
+            ModuleForgeScope.SetOwner(this, unit);
+            Engage();
+            ModuleForgeLive.Track(this, unit);
+        }
+
+        public override void OnUninstalled(Unit.Data unit)
+        {
+            ModuleForgeLive.Untrack(this);
+            Disengage();
+        }
+
+        // Unpowered or disconnected is the same thing as not being there, which
+        // is what the game does with every stock module - see ModuleForgeLive.
+        //
+        // `_weapon` is dropped on the way out on purpose. An unpowered module is
+        // no longer in `ConnectedAndPoweredModules`, so the weapon the cluster
+        // rebuilds without it never calls `Modify` again and the capture would
+        // be a `WeaponBase` that no longer exists. Coming back powered rebuilds
+        // the weapon first (the cluster refresh is synchronous with the grid
+        // change; the stat recalculation that drives this gate is the frame
+        // after), so `Push` always sees a current one.
+        public void OnModuleLiveChanged(Unit.Data unit, bool live)
+        {
+            ModuleForgeScope.SetOwner(this, unit);
+
+            if (live)
+                Engage();
+            else
+                Disengage();
+        }
+
+        // The one owner of each direction, so install, uninstall and the
+        // powered gate cannot drift apart.
+        private void Engage()
+        {
             _installed = true;
             Push();
         }
 
-        public override void OnUninstalled(Unit.Data unit)
+        private void Disengage()
         {
             _installed = false;
             _weapon = null;
@@ -165,6 +207,7 @@ namespace ModuleForge
             if (!_installed)
                 return;
 
+            ModuleForgeScope.SetOwner(this, unit);
             Push();
         }
 
@@ -296,6 +339,7 @@ namespace ModuleForge
                 colorSeconds = colorSeconds,
                 colorPulse = colorPulse,
                 tintStrength = tintStrength,
+                tintMode = tintMode,
                 shake = shake
             };
         }

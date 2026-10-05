@@ -32,7 +32,7 @@ namespace ModuleForge
     public static class ModuleForgeBuffHud
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.BuffHud");
+            ModuleForgeLog.Source("ModuleForge.BuffHud");
 
         public enum Style { Off, Feed, Icons, Both }
         public enum Labels { EffectAmount, Seconds, Stacks, IconOnly }
@@ -171,7 +171,7 @@ namespace ModuleForge
                 // Only repaint when the words change. ShipLogDisplay plays its
                 // new-message sound on EVERY entry it shows, so re-logging each
                 // frame would chirp continuously.
-                if (text == e.text && e.widget != null)
+                if (text == e.text && Painted(e))
                     return;
 
                 e.text = text;
@@ -186,6 +186,20 @@ namespace ModuleForge
             {
                 Log.LogError("Buff indicator failed: " + ex);
             }
+        }
+
+        // Is this entry's current text already on screen, everywhere the style
+        // draws it? The old test asked only for the ICON widget, which the
+        // "feed" style never builds - so under that style it was never true and
+        // every call re-fed a line whose words had not changed. Same fix as
+        // Weapon Forge's copy.
+        private static bool Painted(Entry e)
+        {
+            bool feed = style == Style.Feed || style == Style.Both;
+            bool icons = style == Style.Icons || style == Style.Both;
+
+            return (!feed || _logged.ContainsKey(e.id)) &&
+                   (!icons || e.widget != null);
         }
 
         public static void Clear(object key)

@@ -34,7 +34,7 @@ namespace ModuleForge
     public static class ModuleForgeUnits
     {
         private static readonly ManualLogSource Log =
-            BepInEx.Logging.Logger.CreateLogSource("ModuleForge.Units");
+            ModuleForgeLog.Source("ModuleForge.Units");
 
         // Data -> Unit. Keyed by reference: Unit.Data is a class, so this is
         // identity, which is what we want.
